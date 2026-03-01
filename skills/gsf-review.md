@@ -1,106 +1,123 @@
 ---
 name: gsf:review
-description: AI-driven flow-based code review using gsf tools
+description: AI-driven flow-based code review using git diff + gsf tools
 ---
 
-You are performing a flow-based code review. Use gsf tools to gather precise code facts, then organize them into a human-friendly review document.
+You are performing a flow-based code review. Use `git diff` for complete change information, and `gsf` tools for Go call-chain context. Organize the review by logical flow, not file order.
 
-## Available Tools
+## Step 1: Determine Review Scope
 
-### gsf diff
-Lists all changed functions with their complete source code.
-```
-gsf diff [dir]                          # uncommitted changes
-gsf diff --commit HEAD [dir]            # last commit
-gsf diff --base main [dir]             # changes vs base branch
-gsf diff --format yaml [dir]           # structured output
+Ask the user what to review if not clear. Common patterns:
+
+```bash
+# Last commit
+git diff HEAD~1 HEAD
+
+# Last N commits
+git diff HEAD~N HEAD
+
+# Branch vs main
+git diff main...HEAD
+
+# Staged changes
+git diff --staged
+
+# Unstaged changes
+git diff
 ```
 
-### gsf callers
-Finds direct callers of a function (one level up).
-```
+First run `git diff --stat <range>` to get an overview of changed files, then read the full diff.
+
+For large diffs, read per-file: `git diff <range> -- <file>` to manage context window.
+
+## Step 2: Read the Full Diff
+
+Read the complete `git diff` output. This is your primary source of truth — it shows every change with `+/-` lines, no blind spots.
+
+Group the changes mentally:
+- Which files/functions were modified?
+- Which are new files?
+- Which are test changes?
+- Which are non-Go changes (configs, docs, etc.)?
+
+## Step 3: Determine Change Type and Review Strategy
+
+Based on the diff, determine:
+- **Change type**: new feature, bugfix, refactor, small fix
+- **Scope**: single function, module-level, cross-module
+- **Review strategy**: which "flow" to follow
+
+Choose a review strategy:
+- **Request flow** (new feature): entry point → downstream implementation → tests
+- **Impact flow** (bugfix/refactor): change point → callers (who's affected) → tests
+- **Data flow**: input → transformations → output
+- **Simple review** (small change): direct review without flow
+
+## Step 4: Supplement with gsf Tools (as needed)
+
+Use gsf tools to understand code structure that isn't visible in the diff:
+
+### gsf callers — Who calls this function?
+```bash
 gsf callers --pkg <package-path> --func <function-name> [dir]
-gsf callers --pkg <package-path> --func <function-name> --format yaml [dir]
 ```
+Use when: a function's signature or behavior changed, and you need to assess impact on callers.
 
-### gsf trace
-Traces call chains downward from a function.
-```
+### gsf trace — What does this function call?
+```bash
 gsf trace --pkg <package-path> --func <function-name> [dir]
 gsf trace --pkg <package-path> --func <function-name> --depth 5 [dir]
 ```
+Use when: reviewing a new entry point and you want to see its full call chain.
 
-## Review Flow
+**Only use these tools when the diff alone doesn't give enough context.** Don't call them for every changed function.
 
-### Step 1: Get the change overview
-Run `gsf diff --format yaml` to get all changed functions with their code.
+## Step 5: Write the Review Document
 
-### Step 2: Analyze change characteristics
-Based on the diff output, determine:
-- **Change type**: new feature, bugfix, refactor, small fix
-- **Scope**: single function, module-level, cross-module
-- **Entry points**: which changed functions are likely entry points
-
-### Step 3: Gather context based on change type
-
-**New feature** (new functions/methods added):
-- Use `gsf trace` on new entry-point functions to see what they call
-- Verify the implementation chain is complete
-
-**Bugfix** (existing functions modified):
-- Use `gsf callers` on modified functions to assess impact
-- Use `gsf trace` to follow the fix path and verify correctness
-
-**Refactor / signature change**:
-- Use `gsf callers` to verify all call sites are updated
-- Check for any missing adaptations
-
-**Small change** (minor modifications):
-- Direct review of the changed code may be sufficient
-- Use `gsf callers` only if the change could affect callers
-
-### Step 4: Organize the review document
-
-Structure your review as a **flow** (not a file-by-file diff):
-1. Start from the entry point or most significant change
-2. Follow the logical flow (request path, data flow, or impact path)
-3. At each node, show the code and your observations
-4. Note risks, suggestions, and questions
-
-## Output Format
+Structure your review as a **flow**, not a file list:
 
 ```markdown
-# Flow Review: [brief description of what changed]
+# Flow Review: [brief description]
 
 ## Change Overview
-- Type: [new feature / bugfix / refactor / small fix]
-- Scope: [N functions across M packages]
-- Key changes: [1-2 sentence summary]
+- Type: [new feature / bugfix / refactor]
+- Scope: [summary of what changed]
+- Files: [N files changed, from git diff --stat]
 
 ## Review Flow
 
-### 1. [Entry point or most significant change]
-[Code snippet from gsf diff]
-[Your observations, risks, suggestions]
+### 1. [Logical starting point]
 
-### 2. [Next step in the flow]
-[Code snippet]
-[Observations]
+<diff snippet showing the actual +/- changes>
+
+**Observations:** [what you notice, potential issues]
+
+### 2. [Next node in the flow]
+
+<diff snippet>
+
+**Observations:** [...]
 
 ...
 
 ## Impact Assessment
-- Callers affected: [from gsf callers output]
-- Downstream dependencies: [from gsf trace output]
+- Callers affected: [from gsf callers, if checked]
+- Downstream: [from gsf trace, if checked]
 
 ## Summary
-- [Key findings]
-- [Suggestions]
-- [Questions for the author]
+| Finding | Severity | Verdict |
+|---------|----------|---------|
+| ...     | ...      | ...     |
+
+Overall: [LGTM / Changes Requested / Questions]
 ```
 
 ## Rules
-- All code snippets MUST come from gsf tool output. Never generate or recall code from memory.
-- Use `gsf callers` to understand who is affected, not to list every caller.
-- One level of callers at a time. Decide whether to recurse based on what you see.
-- Focus on logic correctness, not style. The review should help the author catch real issues.
+
+- Show **real diff code** (with `+/-` lines) in review nodes, not just the final code.
+- All code MUST come from actual tool output (`git diff`, `gsf callers`, `gsf trace`). Never generate or recall code from memory.
+- Organize by logical flow, not file order. The reader should follow the "story" of the change.
+- Focus on logic correctness and completeness, not style.
+- Use `gsf callers`/`gsf trace` selectively — only when the diff needs structural context.
+- Include test changes in the review. Tests are part of the change.
+- For non-Go file changes (configs, docs), mention them but keep review brief.

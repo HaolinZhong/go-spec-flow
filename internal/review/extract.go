@@ -64,7 +64,7 @@ func ExtractDiffEntries(changedFuncs []*ChangedFunc, pkgs map[string]*packages.P
 			continue
 		}
 
-		fn := findFuncDeclByName(pkg, cf.Name)
+		fn := findFuncDeclByName(pkg, cf.Name, cf.Receiver)
 		if fn == nil {
 			continue
 		}
@@ -93,16 +93,32 @@ func ExtractDiffEntries(changedFuncs []*ChangedFunc, pkgs map[string]*packages.P
 	return entries
 }
 
-// findFuncDeclByName finds a function/method declaration by name in a package.
-func findFuncDeclByName(pkg *packages.Package, name string) *ast.FuncDecl {
+// findFuncDeclByName finds a function/method declaration by name and optional receiver type.
+// If receiver is non-empty, only matches methods with that receiver type.
+// If receiver is empty, only matches standalone functions (no receiver).
+func findFuncDeclByName(pkg *packages.Package, name, receiver string) *ast.FuncDecl {
 	for _, file := range pkg.Syntax {
 		for _, decl := range file.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			if !ok {
 				continue
 			}
-			if fn.Name.Name == name {
-				return fn
+			if fn.Name.Name != name {
+				continue
+			}
+			if receiver == "" {
+				// Match standalone function only
+				if fn.Recv == nil || len(fn.Recv.List) == 0 {
+					return fn
+				}
+			} else {
+				// Match method with specific receiver
+				if fn.Recv != nil && len(fn.Recv.List) > 0 {
+					recvName := receiverTypeName(fn.Recv.List[0].Type)
+					if recvName == receiver {
+						return fn
+					}
+				}
 			}
 		}
 	}

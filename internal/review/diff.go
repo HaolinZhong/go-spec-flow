@@ -2,6 +2,7 @@ package review
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -21,28 +22,125 @@ type Hunk struct {
 	NewCount int
 }
 
+// DiffMode indicates which type of diff was used.
+type DiffMode string
+
+const (
+	DiffModeStaged    DiffMode = "staged"
+	DiffModeUnstaged  DiffMode = "unstaged"
+	DiffModeCommit    DiffMode = "commit"
+	DiffModeBase      DiffMode = "base"
+)
+
+// DiffOutput holds diff results and metadata about how they were obtained.
+type DiffOutput struct {
+	Diffs []*FileDiff
+	Mode  DiffMode
+}
+
 // GetDiff runs git diff and parses the output.
+// When no commit/base is specified, tries staged changes first, then falls back to unstaged.
 func GetDiff(dir string, base string, commit string) ([]*FileDiff, error) {
-	args := []string{"diff", "--unified=0"}
+	output, err := GetDiffWithMode(dir, base, commit)
+	if err != nil {
+		return nil, err
+	}
+	return output.Diffs, nil
+}
+
+// GetDiffWithMode is like GetDiff but also returns the diff mode used.
+func GetDiffWithMode(dir string, base string, commit string) (*DiffOutput, error) {
 	if commit != "" {
-		args = append(args, commit+"~1", commit)
-	} else if base != "" {
-		args = append(args, base+"...HEAD")
+		diffs, err := runGitDiff(dir, "diff", "--unified=0", commit+"~1", commit)
+		if err != nil {
+			return nil, err
+		}
+		return &DiffOutput{Diffs: diffs, Mode: DiffModeCommit}, nil
 	}
 
+	if base != "" {
+		diffs, err := runGitDiff(dir, "diff", "--unified=0", base+"...HEAD")
+		if err != nil {
+			return nil, err
+		}
+		return &DiffOutput{Diffs: diffs, Mode: DiffModeBase}, nil
+	}
+
+	// No commit/base: try staged first, then unstaged
+	staged, err := runGitDiff(dir, "diff", "--staged", "--unified=0")
+	if err != nil {
+		return nil, err
+	}
+	if len(staged) > 0 {
+		return &DiffOutput{Diffs: staged, Mode: DiffModeStaged}, nil
+	}
+
+	unstaged, err := runGitDiff(dir, "diff", "--unified=0")
+	if err != nil {
+		return nil, err
+	}
+	return &DiffOutput{Diffs: unstaged, Mode: DiffModeUnstaged}, nil
+}
+
+func runGitDiff(dir string, args ...string) ([]*FileDiff, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
-		// git diff returns exit code 1 when there are changes with some flags
 		if exitErr, ok := err.(*exec.ExitError); ok && len(out) > 0 {
 			_ = exitErr
 		} else {
-			return nil, fmt.Errorf("git diff: %w", err)
+			return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 		}
 	}
-
 	return parseDiff(string(out)), nil
+}
+
+// GetUntrackedGoFiles returns FileDiff entries for untracked .go files.
+// Each file is treated as new (IsNew: true) with the entire file as a single hunk.
+func GetUntrackedGoFiles(dir string) ([]*FileDiff, error) {
+	cmd := exec.Command("git", "ls-files", "--others", "--exclude-standard")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git ls-files: %w", err)
+	}
+
+	var diffs []*FileDiff
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" || filepath.Ext(line) != ".go" {
+			continue
+		}
+		// Count lines in the file for the hunk
+		lineCount, err := countFileLines(filepath.Join(dir, line))
+		if err != nil {
+			continue
+		}
+		diffs = append(diffs, &FileDiff{
+			Path:  line,
+			IsNew: true,
+			Hunks: []*Hunk{{NewStart: 1, NewCount: lineCount}},
+		})
+	}
+	return diffs, nil
+}
+
+func countFileLines(path string) (int, error) {
+	data, err := exec.Command("wc", "-l", path).Output()
+	if err != nil {
+		// Fallback: read file
+		content, err2 := os.ReadFile(path)
+		if err2 != nil {
+			return 0, err2
+		}
+		return strings.Count(string(content), "\n") + 1, nil
+	}
+	parts := strings.Fields(strings.TrimSpace(string(data)))
+	if len(parts) == 0 {
+		return 0, fmt.Errorf("unexpected wc output")
+	}
+	n, _ := strconv.Atoi(parts[0])
+	return n, nil
 }
 
 // GetDiffNames returns just the changed file names.

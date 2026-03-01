@@ -75,6 +75,35 @@ func TestFindCallersCrossPackage(t *testing.T) {
 	}
 }
 
+func TestFindCallersInFuncLit(t *testing.T) {
+	project, err := LoadProject("../../testdata/sample-app")
+	if err != nil {
+		t.Fatalf("LoadProject error: %v", err)
+	}
+
+	// service.GetOrder is called from cli/cmd.go inside a package-level FuncLit (orderCmd.RunE)
+	result := FindCallers(project, "sample-app/service", "GetOrder")
+
+	// Should find callers from both handler (FuncDecl) and cli (FuncLit)
+	foundHandler := false
+	foundCLI := false
+	for _, c := range result.Callers {
+		if c.Package == "sample-app/handler" && c.Name == "GetOrder" {
+			foundHandler = true
+		}
+		if c.Package == "sample-app/cli" && c.Name == "orderCmd" {
+			foundCLI = true
+		}
+	}
+
+	if !foundHandler {
+		t.Error("expected handler.GetOrder as a caller (FuncDecl)")
+	}
+	if !foundCLI {
+		t.Error("expected cli.orderCmd as a caller (FuncLit in package-level var)")
+	}
+}
+
 func TestCallersResultString(t *testing.T) {
 	result := &CallersResult{
 		Target: CallerTarget{Package: "pkg/a", Name: "Foo"},

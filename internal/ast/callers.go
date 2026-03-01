@@ -47,6 +47,7 @@ func (cr *CallersResult) String() string {
 }
 
 // FindCallers finds all direct callers (one level) of the specified function in the project.
+// It searches both function declarations and package-level variable initializers (e.g., cobra RunE).
 func FindCallers(project *Project, targetPkg, targetFunc string) *CallersResult {
 	result := &CallersResult{
 		Target: CallerTarget{
@@ -58,33 +59,36 @@ func FindCallers(project *Project, targetPkg, targetFunc string) *CallersResult 
 	for pkgPath, pkg := range project.pkgMap {
 		for _, file := range pkg.Syntax {
 			for _, decl := range file.Decls {
-				fn, ok := decl.(*ast.FuncDecl)
-				if !ok || fn.Body == nil {
-					continue
+				switch d := decl.(type) {
+				case *ast.FuncDecl:
+					if d.Body == nil {
+						continue
+					}
+					scanBodyForCalls(pkg, d.Body, pkgPath, d.Name.Name, targetPkg, targetFunc, result)
+
+				case *ast.GenDecl:
+					// Walk variable declarations for FuncLit (e.g., cobra RunE)
+					for _, spec := range d.Specs {
+						vs, ok := spec.(*ast.ValueSpec)
+						if !ok {
+							continue
+						}
+						varName := ""
+						if len(vs.Names) > 0 {
+							varName = vs.Names[0].Name
+						}
+						for _, val := range vs.Values {
+							ast.Inspect(val, func(n ast.Node) bool {
+								fl, ok := n.(*ast.FuncLit)
+								if !ok {
+									return true
+								}
+								scanBodyForCalls(pkg, fl.Body, pkgPath, varName, targetPkg, targetFunc, result)
+								return true
+							})
+						}
+					}
 				}
-
-				callerName := fn.Name.Name
-				callerPkg := pkgPath
-
-				ast.Inspect(fn.Body, func(n ast.Node) bool {
-					call, ok := n.(*ast.CallExpr)
-					if !ok {
-						return true
-					}
-
-					callPkg, callFunc := resolveCallTargetStatic(pkg, call)
-					if callPkg == targetPkg && callFunc == targetFunc {
-						pos := pkg.Fset.Position(call.Pos())
-						result.Callers = append(result.Callers, &CallerInfo{
-							Package: callerPkg,
-							Name:    callerName,
-							File:    pos.Filename,
-							Line:    pos.Line,
-						})
-					}
-
-					return true
-				})
 			}
 		}
 	}
@@ -92,9 +96,32 @@ func FindCallers(project *Project, targetPkg, targetFunc string) *CallersResult 
 	return result
 }
 
-// resolveCallTargetStatic resolves a call expression to its target package and function name.
-// This is similar to Tracer.resolveCallTarget but doesn't require a Tracer instance.
-func resolveCallTargetStatic(pkg *packages.Package, call *ast.CallExpr) (pkgPath, funcName string) {
+// scanBodyForCalls inspects a function body for calls to the target function.
+func scanBodyForCalls(pkg *packages.Package, body *ast.BlockStmt, callerPkg, callerName, targetPkg, targetFunc string, result *CallersResult) {
+	ast.Inspect(body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+
+		callPkg, callFunc := ResolveCallTarget(pkg, call)
+		if callPkg == targetPkg && callFunc == targetFunc {
+			pos := pkg.Fset.Position(call.Pos())
+			result.Callers = append(result.Callers, &CallerInfo{
+				Package: callerPkg,
+				Name:    callerName,
+				File:    pos.Filename,
+				Line:    pos.Line,
+			})
+		}
+
+		return true
+	})
+}
+
+// ResolveCallTarget resolves a call expression to its target package and function name.
+// Shared by both FindCallers and Tracer to ensure consistent resolution.
+func ResolveCallTarget(pkg *packages.Package, call *ast.CallExpr) (pkgPath, funcName string) {
 	switch fn := call.Fun.(type) {
 	case *ast.Ident:
 		if obj, ok := pkg.TypesInfo.Uses[fn]; ok {

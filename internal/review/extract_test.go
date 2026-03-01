@@ -14,9 +14,10 @@ func TestExtractDiffEntries(t *testing.T) {
 
 	changedFuncs := []*ChangedFunc{
 		{
-			Package: "sample-app/handler",
-			Name:    "CreateOrder",
-			IsNew:   false,
+			Package:  "sample-app/handler",
+			Name:     "CreateOrder",
+			Receiver: "OrderHandler",
+			IsNew:    false,
 		},
 		{
 			Package:  "sample-app/service",
@@ -57,6 +58,52 @@ func TestExtractDiffEntries(t *testing.T) {
 	}
 	if e2.Code == "" {
 		t.Error("entry[1].Code is empty")
+	}
+}
+
+func TestExtractDiffEntriesReceiverDisambiguation(t *testing.T) {
+	project, err := goast.LoadProject("../../testdata/sample-app")
+	if err != nil {
+		t.Fatalf("LoadProject error: %v", err)
+	}
+
+	// service package has NewOrderService (standalone) and CreateOrder (method on OrderService)
+	// Request both: should get correct code for each
+	changedFuncs := []*ChangedFunc{
+		{
+			Package:  "sample-app/service",
+			Name:     "NewOrderService",
+			Receiver: "",
+			IsNew:    false,
+		},
+		{
+			Package:  "sample-app/service",
+			Name:     "CreateOrder",
+			Receiver: "OrderService",
+			IsNew:    false,
+		},
+	}
+
+	entries := ExtractDiffEntries(changedFuncs, project.RawPackages())
+
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+
+	// NewOrderService should be standalone (no receiver in code)
+	if entries[0].Receiver != "" {
+		t.Errorf("entry[0] receiver = %q, want empty", entries[0].Receiver)
+	}
+	if !containsStr(entries[0].Code, "func NewOrderService()") {
+		t.Error("entry[0] code doesn't contain standalone function signature")
+	}
+
+	// CreateOrder should be method (has receiver)
+	if entries[1].Receiver != "OrderService" {
+		t.Errorf("entry[1] receiver = %q, want OrderService", entries[1].Receiver)
+	}
+	if !containsStr(entries[1].Code, "func (s *OrderService) CreateOrder") {
+		t.Error("entry[1] code doesn't contain method signature")
 	}
 }
 

@@ -12,20 +12,21 @@ import (
 )
 
 var (
-	reviewCommit string
-	reviewBase   string
+	diffCommit string
+	diffBase   string
 )
 
-var reviewCmd = &cobra.Command{
-	Use:   "review [dir]",
-	Short: "Flow-based code review: see changes organized by request flow",
-	Long: `Review analyzes git diff and overlays changes onto the call chain tree,
-presenting code changes organized by request flow rather than by file.
+var diffCmd = &cobra.Command{
+	Use:   "diff [dir]",
+	Short: "Show function-level changes with complete code",
+	Long: `Diff analyzes git changes and maps them to Go function/method declarations,
+outputting each changed function with its full source code.
 
 Examples:
-  gsf review testdata/sample-app                    # uncommitted changes
-  gsf review --commit HEAD testdata/sample-app       # last commit
-  gsf review --base main testdata/sample-app         # changes vs main branch`,
+  gsf diff                                  # uncommitted changes
+  gsf diff --commit HEAD                    # last commit
+  gsf diff --base main                      # changes vs main branch
+  gsf diff --format json                    # JSON output for AI consumption`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dir := "."
@@ -34,7 +35,7 @@ Examples:
 		}
 
 		// Get diff
-		diffs, err := review.GetDiff(dir, reviewBase, reviewCommit)
+		diffs, err := review.GetDiff(dir, diffBase, diffCommit)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error getting diff: %v\n", err)
 			return err
@@ -60,16 +61,17 @@ Examples:
 			return nil
 		}
 
-		// Build flow review
-		fr := review.BuildFlowReview(project, changedFuncs)
+		// Extract full function code
+		entries := review.ExtractDiffEntries(changedFuncs, project.RawPackages())
+		result := &review.DiffResult{ChangedFunctions: entries}
 
 		f := output.NewFormatter(format)
-		return f.Print(fr)
+		return f.Print(result)
 	},
 }
 
 func init() {
-	reviewCmd.Flags().StringVar(&reviewCommit, "commit", "", "review a specific commit")
-	reviewCmd.Flags().StringVar(&reviewBase, "base", "", "review changes against base branch")
-	rootCmd.AddCommand(reviewCmd)
+	diffCmd.Flags().StringVar(&diffCommit, "commit", "", "analyze a specific commit")
+	diffCmd.Flags().StringVar(&diffBase, "base", "", "analyze changes against base branch")
+	rootCmd.AddCommand(diffCmd)
 }

@@ -1,123 +1,144 @@
 ---
 name: gsf:review
-description: AI-driven flow-based code review using git diff + gsf tools
+description: Generate interactive HTML code review with flow tree navigation
 ---
 
-You are performing a flow-based code review. Use `git diff` for complete change information, and `gsf` tools for Go call-chain context. Organize the review by logical flow, not file order.
+Generate an AI-orchestrated interactive code review. You are a "tour guide" — organize code into meaningful flows and explain each node's role.
 
-## Step 1: Determine Review Scope
+## Step 1: Ask Review Scope
 
-Ask the user what to review if not clear. Common patterns:
+Ask the user to choose one:
+1. **最近一次 commit** — review 最新提交
+2. **最近 N 次 commits** — review 最近几次提交（问 N 是多少）
+3. **vs 某个分支** — 和指定分支对比（问分支名，默认 main）
+4. **整个 codebase** — 探索完整代码架构
+5. **某个包** — 探索特定包（问包路径）
+
+## Step 2: Extract Structural Data
+
+Ensure `go` is in PATH, then run gsf to get raw JSON:
 
 ```bash
-# Last commit
-git diff HEAD~1 HEAD
-
-# Last N commits
-git diff HEAD~N HEAD
-
-# Branch vs main
-git diff main...HEAD
-
-# Staged changes
-git diff --staged
-
-# Unstaged changes
-git diff
+export PATH=$HOME/sdk/go1.22.5/bin:$PATH
 ```
 
-First run `git diff --stat <range>` to get an overview of changed files, then read the full diff.
+| Scope | Command |
+|-------|---------|
+| 最近一次 commit | `gsf review --commit HEAD --json > /tmp/gsf-raw.json` |
+| 最近 N 次 | `gsf review --commit HEAD~N..HEAD --json > /tmp/gsf-raw.json` |
+| vs 分支 | `gsf review --base <branch> --json > /tmp/gsf-raw.json` |
+| 整个 codebase | `gsf review --codebase --json > /tmp/gsf-raw.json` |
+| 某个包 | `gsf review --codebase --entry "<pkg>" --json > /tmp/gsf-raw.json` |
+| 全部历史 | `gsf review --commit $(git rev-list --max-parents=0 HEAD)..HEAD --json > /tmp/gsf-raw.json` |
 
-For large diffs, read per-file: `git diff <range> -- <file>` to manage context window.
+Optional: add `--depth N` to increase call chain trace depth (default: 2 for diff, 4 for codebase). Use higher values (e.g., `--depth 6`) if important functions are cut off by depth limits.
 
-## Step 2: Read the Full Diff
+## Step 3: AI Orchestration — Build Master Flow
 
-Read the complete `git diff` output. This is your primary source of truth — it shows every change with `+/-` lines, no blind spots.
+Read `/tmp/gsf-raw.json`. This contains the raw structural tree (packages/files/functions with source code).
 
-Group the changes mentally:
-- Which files/functions were modified?
-- Which are new files?
-- Which are test changes?
-- Which are non-Go changes (configs, docs, etc.)?
+Your job: **build a single master flow (主动线) that tells the story of the code's lifecycle, then nest sub-flows under each step**.
 
-## Step 3: Determine Change Type and Review Strategy
+### Think like a tour guide:
 
-Based on the diff, determine:
-- **Change type**: new feature, bugfix, refactor, small fix
-- **Scope**: single function, module-level, cross-module
-- **Review strategy**: which "flow" to follow
+1. **Understand the code** — Read through every node's code to understand what each function does
+2. **Identify the master flow** — What is the end-to-end lifecycle?
+   - For codebase mode: "When a command/request comes in, what happens step by step?" (e.g., CLI parses args → loads config → runs analysis → generates output)
+   - For diff mode: "What is this change doing, and in what order does it flow?" (e.g., new flag added → new function parses input → existing renderer updated)
+3. **Identify sub-flows** — Within each step of the master flow, group the relevant functions
+4. **Build a three-layer tree**:
+   - **Layer 1 (root)**: Single master flow node — the overall story. **Its `code` field MUST contain the primary entry function's complete code** (e.g., the main handler, the top-level exported function). This is what readers see first when opening the review
+   - **Layer 2 (steps)**: Each major step in the lifecycle, in execution order. **Each step's `code` field MUST contain the entry function's complete code** (copy from the original node) — this lets readers see real code at the master flow level
+   - **Layer 3 (functions)**: The actual code nodes under each step (including the entry function with its detailed description)
+5. **Add descriptions at every level**:
+   - `FlowTree.description`: 1-2 sentence overview of the entire review
+   - Master flow root's `description`: The complete lifecycle narrative — "When X happens, first A, then B, then C..."
+   - Each step's `description`: What this step does, why it matters, how it connects to the previous/next step
+   - Each function node's `description`: This function's specific role within its step
 
-Choose a review strategy:
-- **Request flow** (new feature): entry point → downstream implementation → tests
-- **Impact flow** (bugfix/refactor): change point → callers (who's affected) → tests
-- **Data flow**: input → transformations → output
-- **Simple review** (small change): direct review without flow
+### Small package rule:
 
-## Step 4: Supplement with gsf Tools (as needed)
+If there are fewer than 5 functions total, skip layer 2 (steps) and put functions directly under the master flow root (two-layer structure).
 
-Use gsf tools to understand code structure that isn't visible in the diff:
+### Output format:
 
-### gsf callers — Who calls this function?
+Write the orchestrated JSON to `/tmp/gsf-flow.json`. The JSON structure is:
+
+```json
+{
+  "mode": "codebase",
+  "title": "Architecture Review: <project>",
+  "description": "Overview of the review...",
+  "roots": [
+    {
+      "id": "master-flow",
+      "label": "主动线: Complete Lifecycle Name",
+      "description": "When a request arrives, the system first does X, then Y, then Z...",
+      "nodeType": "file",
+      "code": "func MainEntry(...) { ... }  // ← primary entry function code here",
+      "children": [
+        {
+          "id": "step-1",
+          "label": "1. Step Name",
+          "description": "This step handles X. It receives Y from the previous step and produces Z for the next step.",
+          "nodeType": "file",
+          "code": "func EntryFunction(...) { ... }  // ← COPY the entry function's full code here",
+          "children": [
+            {
+              "id": "original-node-id",
+              "label": "FunctionName",
+              "description": "Role of this function within this step...",
+              "package": "...",
+              "file": "...",
+              "lineStart": 0,
+              "lineEnd": 0,
+              "code": "... (keep original code) ...",
+              "nodeType": "function",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "step-2",
+          "label": "2. Next Step Name",
+          "description": "After step 1 completes, this step...",
+          "nodeType": "file",
+          "code": "func NextEntryFunc(...) { ... }  // ← entry function code",
+          "children": [...]
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Rules:**
+- The `roots` array MUST have exactly ONE element — the master flow
+- Keep ALL original code in nodes — never truncate or summarize code
+- In diff mode, nodes have both `code` (source) and `diff` (raw diff) fields. Keep both — the HTML toggle lets users switch between views
+- Each step node's `code` MUST contain its entry function's complete code (copied from the original node). This lets readers see code at the master flow level and click function names to navigate deeper
+- Steps (layer 2) should be numbered and in execution/logical order
+- **EVERY node at EVERY level MUST have a description** — including deep trace chain nodes (layer 3, 4, 5...). No node should be left without a description. For deep call chain nodes, a brief one-sentence description is fine (e.g., "解析 diff 文本，按文件拆分为独立的 GitDiffFile 列表")
+- Step descriptions should explain the connection to previous/next steps
+- Descriptions should be in the same language as the user's conversation
+
+### For large codebases:
+
+If the JSON is too large (>500KB), tell the user and suggest reviewing by package:
+```
+The codebase is large. I recommend reviewing by package:
+gsf review --codebase --entry "internal/ast" --json
+```
+
+## Step 4: Render and Open
+
 ```bash
-gsf callers --pkg <package-path> --func <function-name> [dir]
-```
-Use when: a function's signature or behavior changed, and you need to assess impact on callers.
-
-### gsf trace — What does this function call?
-```bash
-gsf trace --pkg <package-path> --func <function-name> [dir]
-gsf trace --pkg <package-path> --func <function-name> --depth 5 [dir]
-```
-Use when: reviewing a new entry point and you want to see its full call chain.
-
-**Only use these tools when the diff alone doesn't give enough context.** Don't call them for every changed function.
-
-## Step 5: Write the Review Document
-
-Structure your review as a **flow**, not a file list:
-
-```markdown
-# Flow Review: [brief description]
-
-## Change Overview
-- Type: [new feature / bugfix / refactor]
-- Scope: [summary of what changed]
-- Files: [N files changed, from git diff --stat]
-
-## Review Flow
-
-### 1. [Logical starting point]
-
-<diff snippet showing the actual +/- changes>
-
-**Observations:** [what you notice, potential issues]
-
-### 2. [Next node in the flow]
-
-<diff snippet>
-
-**Observations:** [...]
-
-...
-
-## Impact Assessment
-- Callers affected: [from gsf callers, if checked]
-- Downstream: [from gsf trace, if checked]
-
-## Summary
-| Finding | Severity | Verdict |
-|---------|----------|---------|
-| ...     | ...      | ...     |
-
-Overall: [LGTM / Changes Requested / Questions]
+gsf review --render /tmp/gsf-flow.json --open
 ```
 
-## Rules
-
-- Show **real diff code** (with `+/-` lines) in review nodes, not just the final code.
-- All code MUST come from actual tool output (`git diff`, `gsf callers`, `gsf trace`). Never generate or recall code from memory.
-- Organize by logical flow, not file order. The reader should follow the "story" of the change.
-- Focus on logic correctness and completeness, not style.
-- Use `gsf callers`/`gsf trace` selectively — only when the diff needs structural context.
-- Include test changes in the review. Tests are part of the change.
-- For non-Go file changes (configs, docs), mention them but keep review brief.
+Tell the user:
+- Left panel: flow tree with master flow → steps → functions (click to navigate)
+- Right panel: source code with AI commentary above each function
+- Blue card above code = AI's explanation of the function's role
+- Underlined function names in code are clickable — click to jump to that function's detail in the tree
+- In diff mode: Source/Diff toggle in header — switch between syntax-highlighted source and colored diff view (green=add, red=delete). In codebase mode the toggle is disabled

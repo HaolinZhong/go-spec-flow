@@ -25,7 +25,7 @@
 
 ## 5. 自举验证
 
-- [ ] 5.1 确保 `go test ./...` 全部通过
-- [ ] 5.2 自举 review 流程：commit 后运行 `gsf diff --commit HEAD`，验证所有修改函数正确列出
-- [ ] 5.3 自举 callers 验证：运行 `gsf callers --pkg .../internal/review --func ExtractDiffEntries`，确认能找到 `internal/cmd` 中的调用者
-- [ ] 5.4 自举 staged diff 验证：stage 一个文件变更，运行 `gsf diff`，确认能输出 staged changes
+- [x] 5.1 确保 `go test ./...` 全部通过
+- [x] 5.2 自举 review 流程：commit 后运行 `gsf diff --commit HEAD`，验证所有修改函数正确列出
+- [x] 5.3 自举 callers 验证：运行 `gsf callers --pkg .../internal/review --func ExtractDiffEntries`，确认能找到 `internal/cmd` 中的调用者
+- [x] 5.4 自举 staged diff 验证：stage 一个文件变更，运行 `gsf diff`，确认能输出 staged changes

@@ -79,6 +79,19 @@ func buildFuncNodesFromDiff(project *goast.Project, dir string, df *GitDiffFile,
 				continue
 			}
 
+			// Collect sibling function names for dedup (layer 1)
+			siblings := make(map[string]bool)
+			for _, decl := range file.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Body == nil {
+					continue
+				}
+				siblings[fn.Name.Name] = true
+			}
+
+			// Per-file seen set for cross-branch dedup (layer 2)
+			seen := make(map[string]bool)
+
 			// Extract function declarations from this file
 			for _, decl := range file.Decls {
 				fn, ok := decl.(*ast.FuncDecl)
@@ -111,12 +124,18 @@ func buildFuncNodesFromDiff(project *goast.Project, dir string, df *GitDiffFile,
 					NodeType:  nodeType,
 				}
 
-				// Add trace children (one level only for diff mode)
+				// Mark this function as seen (it's a top-level node)
+				seen[pkgPath+"."+funcName] = true
+
+				// Add trace children with sibling filtering + seen dedup
 				tracer := goast.NewTracer(project, goast.TraceConfig{MaxDepth: maxDepth})
 				chain := tracer.Trace(pkgPath, funcName)
 				if chain.Root != nil {
 					for _, callChild := range chain.Root.Children {
-						child.Children = append(child.Children, callNodeToFlowNode(project, callChild))
+						childNode := callNodeToFlowNode(project, callChild, siblings, seen)
+						if childNode != nil {
+							child.Children = append(child.Children, childNode)
+						}
 					}
 				}
 
@@ -171,6 +190,19 @@ func BuildCodebaseTree(project *goast.Project, entryPkg string, maxDepth int) (*
 				NodeType: "file",
 			}
 
+			// Collect sibling function names for dedup (layer 1)
+			siblings := make(map[string]bool)
+			for _, decl := range file.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Body == nil {
+					continue
+				}
+				siblings[fn.Name.Name] = true
+			}
+
+			// Per-file seen set for cross-branch dedup (layer 2)
+			seen := make(map[string]bool)
+
 			// Add function-level children with trace
 			for _, decl := range file.Decls {
 				fn, ok := decl.(*ast.FuncDecl)
@@ -200,11 +232,17 @@ func BuildCodebaseTree(project *goast.Project, entryPkg string, maxDepth int) (*
 					NodeType:  nodeType,
 				}
 
-				// Trace call chain from this function
+				// Mark this function as seen
+				seen[pkgPath+"."+funcName] = true
+
+				// Trace call chain with sibling filtering + seen dedup
 				chain := tracer.Trace(pkgPath, funcName)
 				if chain.Root != nil {
 					for _, callChild := range chain.Root.Children {
-						funcNode.Children = append(funcNode.Children, callNodeToFlowNode(project, callChild))
+						childNode := callNodeToFlowNode(project, callChild, siblings, seen)
+						if childNode != nil {
+							funcNode.Children = append(funcNode.Children, childNode)
+						}
 					}
 				}
 
@@ -219,7 +257,27 @@ func BuildCodebaseTree(project *goast.Project, entryPkg string, maxDepth int) (*
 }
 
 // callNodeToFlowNode converts an ast.CallNode to a FlowNode.
-func callNodeToFlowNode(project *goast.Project, cn *goast.CallNode) *FlowNode {
+// siblings: set of function labels declared in the same file (filtered out).
+// seen: per-file dedup set (key: "pkg.FuncName"). First occurrence gets full
+// code+children; subsequent occurrences get a minimal reference node.
+func callNodeToFlowNode(project *goast.Project, cn *goast.CallNode, siblings map[string]bool, seen map[string]bool) *FlowNode {
+	// Skip siblings — they already exist as top-level nodes in the same file
+	if siblings[cn.Name] {
+		return nil
+	}
+
+	key := cn.Package + "." + cn.Name
+	if seen[key] {
+		// Already seen: return minimal reference (no code, no children)
+		return &FlowNode{
+			ID:       fmt.Sprintf("ref-%s-%s", cn.Package, cn.Name),
+			Label:    cn.Name,
+			Package:  cn.Package,
+			NodeType: string(cn.Type),
+		}
+	}
+	seen[key] = true
+
 	node := &FlowNode{
 		ID:       fmt.Sprintf("call-%s-%s", cn.Package, cn.Name),
 		Label:    cn.Name,
@@ -250,7 +308,10 @@ func callNodeToFlowNode(project *goast.Project, cn *goast.CallNode) *FlowNode {
 
 	// Recurse children
 	for _, child := range cn.Children {
-		node.Children = append(node.Children, callNodeToFlowNode(project, child))
+		childNode := callNodeToFlowNode(project, child, siblings, seen)
+		if childNode != nil {
+			node.Children = append(node.Children, childNode)
+		}
 	}
 
 	return node

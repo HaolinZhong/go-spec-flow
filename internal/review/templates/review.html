@@ -541,15 +541,25 @@ function updateToggleState(node) {
   srcBtn.disabled = !hasCode;
   diffBtn.disabled = !hasDiff;
 
-  // If current viewMode not available, switch to what's available
+  // Determine effective view for this node WITHOUT changing user preference (viewMode)
+  let effectiveView = viewMode;
   if (viewMode === 'diff' && !hasDiff && hasCode) {
-    viewMode = 'source';
+    effectiveView = 'source';
   } else if (viewMode === 'source' && !hasCode && hasDiff) {
-    viewMode = 'diff';
+    effectiveView = 'diff';
   }
 
-  srcBtn.classList.toggle('active', viewMode === 'source');
-  diffBtn.classList.toggle('active', viewMode === 'diff');
+  srcBtn.classList.toggle('active', effectiveView === 'source');
+  diffBtn.classList.toggle('active', effectiveView === 'diff');
+}
+
+// Determine effective view mode for a node (respects user preference, falls back if needed)
+function getEffectiveView(node) {
+  const hasDiff = !!(node && node.diff);
+  const hasCode = !!(node && node.code);
+  if (viewMode === 'diff' && !hasDiff && hasCode) return 'source';
+  if (viewMode === 'source' && !hasCode && hasDiff) return 'diff';
+  return viewMode;
 }
 
 // Show code in right panel
@@ -559,7 +569,8 @@ function showCode(node) {
 
   updateToggleState(node);
 
-  const content = (viewMode === 'diff' && node.diff) ? node.diff : node.code;
+  const effectiveView = getEffectiveView(node);
+  const content = (effectiveView === 'diff' && node.diff) ? node.diff : node.code;
 
   if (!content) {
     if (node.description) {
@@ -581,7 +592,7 @@ function showCode(node) {
     headerText = node.package + ' — ' + headerText;
   }
 
-  const showingDiff = (viewMode === 'diff' && node.diff);
+  const showingDiff = (effectiveView === 'diff' && node.diff);
   let codeHTML;
   if (showingDiff) {
     codeHTML = renderDiff(content);

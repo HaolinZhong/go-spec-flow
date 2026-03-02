@@ -185,19 +185,24 @@ body {
 
 /* Diff coloring */
 .diff-line { display: block; padding: 0 8px; }
-.diff-add { background: rgba(35, 134, 54, 0.2); color: #98c379; }
-.diff-del { background: rgba(218, 54, 51, 0.15); color: #e06c75; }
+.diff-add { background: rgba(35, 134, 54, 0.2); }
+.diff-del { background: rgba(218, 54, 51, 0.15); }
 .diff-hunk { color: #61afef; font-weight: bold; }
 .diff-header { color: #666; }
+.diff-prefix { user-select: none; }
+.diff-add .diff-prefix { color: #98c379; }
+.diff-del .diff-prefix { color: #e06c75; }
 
 /* Line numbers */
 .line-num {
   display: inline-block;
-  width: 50px;
+  width: 55px;
   text-align: right;
   padding-right: 16px;
+  margin-right: 20px;
   color: #555;
   user-select: none;
+  border-right: 1px solid #333;
 }
 
 /* Welcome */
@@ -290,9 +295,11 @@ body {
   display: inline-block;
   width: 50px;
   text-align: right;
-  padding-right: 16px;
+  padding-right: 12px;
+  margin-right: 12px;
   color: #555;
   user-select: none;
+  border-right: 1px solid #333;
 }
 </style>
 </head>
@@ -595,7 +602,7 @@ function showCode(node) {
   const showingDiff = (effectiveView === 'diff' && node.diff);
   let codeHTML;
   if (showingDiff) {
-    codeHTML = renderDiff(content);
+    codeHTML = renderDiff(content, node.file);
   } else {
     codeHTML = renderSource(content, node.lineStart || 1, node.file);
   }
@@ -609,13 +616,6 @@ function showCode(node) {
     ${descHTML}
     <div id="code-content">${codeHTML}</div>
   `;
-
-  // Apply highlight.js only for source view
-  if (!showingDiff) {
-    panel.querySelectorAll('pre code[class^="language-"]').forEach(block => {
-      try { hljs.highlightElement(block); } catch(e) {}
-    });
-  }
 
   // Post-process: linkify function names that exist in nodeIndex
   linkifyCode(panel.querySelector('#code-content'));
@@ -681,43 +681,89 @@ function linkifyCode(container) {
   });
 }
 
-function renderDiff(code) {
+// Split highlight.js output by line, preserving span tags across line boundaries
+function splitHighlightedByLine(html) {
+  const rawLines = html.split('\n');
+  const result = [];
+  let openTags = [];
+
+  for (const rawLine of rawLines) {
+    const prefix = openTags.join('');
+    // Scan raw line for tag opens/closes to update stack
+    let newOpenTags = [...openTags];
+    const tagRe = /<(\/?)span([^>]*)>/g;
+    let m;
+    while ((m = tagRe.exec(rawLine)) !== null) {
+      if (m[1] === '/') newOpenTags.pop();
+      else newOpenTags.push('<span' + m[2] + '>');
+    }
+    const suffix = '</span>'.repeat(newOpenTags.length);
+    result.push(prefix + rawLine + suffix);
+    openTags = newOpenTags;
+  }
+  return result;
+}
+
+function renderDiff(code, file) {
   const lines = code.split('\n');
-  let html = '<pre>';
-  let newLine = 0;
-  let oldLine = 0;
+  const lang = detectLanguage(file);
+  let newLine = 0, oldLine = 0;
 
+  // Phase 1: classify each line
+  const parsed = [];
   lines.forEach(line => {
-    let cls = 'diff-line';
-    let lineNum = '';
-
     if (line.startsWith('@@')) {
-      cls += ' diff-hunk';
-      // Parse @@ -old,count +new,count @@
       const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-      if (m) {
-        oldLine = parseInt(m[1]);
-        newLine = parseInt(m[2]);
-      }
+      if (m) { oldLine = parseInt(m[1]); newLine = parseInt(m[2]); }
+      parsed.push({ type: 'hunk', raw: line });
     } else if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++') ||
                line.startsWith('new file') || line.startsWith('old mode') || line.startsWith('new mode')) {
-      cls += ' diff-header';
+      parsed.push({ type: 'header', raw: line });
     } else if (line.startsWith('+')) {
-      cls += ' diff-add';
-      lineNum = `<span class="diff-line-num">${newLine}</span>`;
+      parsed.push({ type: 'add', code: line.substring(1), prefix: '+', lineNum: newLine });
       newLine++;
     } else if (line.startsWith('-')) {
-      cls += ' diff-del';
-      lineNum = `<span class="diff-line-num">${oldLine}</span>`;
+      parsed.push({ type: 'del', code: line.substring(1), prefix: '-', lineNum: oldLine });
       oldLine++;
-    } else if (newLine > 0) {
-      // Context line
-      lineNum = `<span class="diff-line-num">${newLine}</span>`;
-      newLine++;
-      oldLine++;
+    } else {
+      const stripped = line.startsWith(' ') ? line.substring(1) : line;
+      parsed.push({ type: 'ctx', code: stripped, prefix: ' ', lineNum: newLine > 0 ? newLine : '' });
+      if (newLine > 0) { newLine++; oldLine++; }
     }
+  });
 
-    html += `<span class="${cls}">${lineNum}${escapeHTML(line)}\n</span>`;
+  // Phase 2: highlight code lines together
+  const codeLines = [];
+  parsed.forEach(p => { if (p.code !== undefined) codeLines.push(p.code); });
+
+  let highlightedLines = codeLines.map(l => escapeHTML(l));
+  try {
+    const result = hljs.highlight(codeLines.join('\n'), { language: lang });
+    highlightedLines = splitHighlightedByLine(result.value);
+  } catch(e) {}
+
+  // Phase 3: assemble HTML
+  let html = '<pre>';
+  let codeIdx = 0;
+  parsed.forEach(p => {
+    let cls = 'diff-line';
+    let lineNum = '';
+    let content;
+
+    if (p.type === 'hunk') {
+      cls += ' diff-hunk';
+      content = escapeHTML(p.raw);
+    } else if (p.type === 'header') {
+      cls += ' diff-header';
+      content = escapeHTML(p.raw);
+    } else {
+      if (p.type === 'add') cls += ' diff-add';
+      else if (p.type === 'del') cls += ' diff-del';
+      if (p.lineNum) lineNum = '<span class="diff-line-num">' + p.lineNum + '</span>';
+      content = '<span class="diff-prefix">' + escapeHTML(p.prefix) + '</span>' + highlightedLines[codeIdx];
+      codeIdx++;
+    }
+    html += '<span class="' + cls + '">' + lineNum + content + '\n</span>';
   });
   html += '</pre>';
   return html;
@@ -742,13 +788,20 @@ function detectLanguage(file) {
 function renderSource(code, startLine, file) {
   const lang = detectLanguage(file);
   const lines = code.split('\n');
-  // Wrap in code block for highlight.js
+
+  // Highlight first, then inject line numbers (avoids hljs destroying line-num spans)
+  let highlightedLines = lines.map(l => escapeHTML(l));
+  try {
+    const result = hljs.highlight(code, { language: lang });
+    highlightedLines = splitHighlightedByLine(result.value);
+  } catch(e) {}
+
   let numbered = '';
-  lines.forEach((line, i) => {
+  highlightedLines.forEach((line, i) => {
     const num = startLine + i;
-    numbered += `<span class="line-num">${num}</span>${escapeHTML(line)}\n`;
+    numbered += '<span class="line-num">' + num + '</span>' + line + '\n';
   });
-  return `<pre><code class="language-${lang}">${numbered}</code></pre>`;
+  return '<pre>' + numbered + '</pre>';
 }
 
 function escapeHTML(str) {

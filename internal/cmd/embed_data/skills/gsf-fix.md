@@ -1,9 +1,9 @@
 ---
 name: gsf:fix
-description: Apply code modifications from review comments
+description: Process review comments — answer questions or apply code modifications
 ---
 
-Apply code changes based on review comments exported from `gsf review`.
+Process review comments from `gsf review`. Comments can be **questions** (asking about code behavior, design decisions, etc.) or **modification requests** (asking for code changes). Handle each appropriately.
 
 ## Step 1: Read Comment File
 
@@ -40,38 +40,63 @@ Ask the user: "Process all comments, or select specific ones?"
 
 ## Step 3: Process Comments
 
-For each comment:
+For each comment, first **classify** it, then handle accordingly:
+
+### Questions (asking about code)
+
+If the comment is a question (contains "?", "为什么", "是不是", "有没有", "什么作用", "怎么", etc.), **answer it**:
+
+1. **Read the target file** and surrounding context
+2. **Research** — trace call chains, find callers, read related code as needed
+3. **Answer thoroughly** — explain the code's purpose, design rationale, trade-offs
+
+```
+### 1/3: internal/ast/callers.go:11
+Comment: "这里查找调用者，起到了什么样的作用？"
+
+→ Answer: FindCallers 在 review 模块中用于...
+```
+
+### Modification Requests (asking for changes)
+
+If the comment requests a change ("应该", "改成", "添加", "删除", "重构", etc.):
 
 1. **Read the target file** at the specified path
 2. **Locate the line** using the `line` number. If the code at that line doesn't match `codeContext`, search for `codeContext` in the file to find the correct location
-3. **Understand the intent** of the comment — it's free-form text describing what the user wants changed
+3. **Understand the intent** of the comment
 4. **Make the modification** as described
 5. **Show what was changed** with before/after
 
 ```
-### Processing 3/7: internal/review/builder.go:128
+### 3/7: internal/review/builder.go:128
 Comment: "这里的 key 应该考虑 receiver type"
 Code context: seen[pkgPath+"."+funcName] = true
 
 → Modified: Added receiver type to seen key
 ```
 
-If a comment's intent is unclear, ask the user for clarification before proceeding.
+### Ambiguous Comments
+
+If a comment's intent is unclear (could be a question or a request), ask the user for clarification before proceeding.
 
 ## Step 4: Completion Summary
 
 After all comments are processed:
 
 ```
-## Fix Complete
+## Processing Complete
 
 **Processed:** 7/7 comments
-**Files modified:** 3
+**Questions answered:** 3
+**Files modified:** 2
+
+### Answers
+- internal/ast/callers.go:11 — explained FindCallers' role in review context
+- ...
 
 ### Changes Made
-- internal/review/builder.go: 3 modifications
-- internal/review/diff.go: 2 modifications
-- internal/cmd/review.go: 2 modifications
+- internal/review/builder.go: 2 modifications
+- internal/cmd/review.go: 1 modification
 
 You can delete review-comments.json if no longer needed.
 ```

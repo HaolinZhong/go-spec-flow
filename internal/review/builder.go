@@ -267,25 +267,21 @@ func callNodeToFlowNode(project *goast.Project, cn *goast.CallNode, siblings map
 	}
 
 	key := cn.Package + "." + cn.Name
-	if seen[key] {
-		// Already seen: return minimal reference (no code, no children)
-		return &FlowNode{
-			ID:       fmt.Sprintf("ref-%s-%s", cn.Package, cn.Name),
-			Label:    cn.Name,
-			Package:  cn.Package,
-			NodeType: string(cn.Type),
-		}
+	isRef := seen[key]
+
+	idPrefix := "call"
+	if isRef {
+		idPrefix = "ref"
 	}
-	seen[key] = true
 
 	node := &FlowNode{
-		ID:       fmt.Sprintf("call-%s-%s", cn.Package, cn.Name),
+		ID:       fmt.Sprintf("%s-%s-%s", idPrefix, cn.Package, cn.Name),
 		Label:    cn.Name,
 		Package:  cn.Package,
 		NodeType: string(cn.Type),
 	}
 
-	// Try to get source code for this function
+	// Populate source code for all nodes (including refs)
 	if project != nil {
 		pkgs := project.RawPackages()
 		if pkg, ok := pkgs[cn.Package]; ok {
@@ -305,6 +301,12 @@ func callNodeToFlowNode(project *goast.Project, cn *goast.CallNode, siblings map
 			}
 		}
 	}
+
+	// Ref nodes: have code but no children (avoids duplication)
+	if isRef {
+		return node
+	}
+	seen[key] = true
 
 	// Recurse children
 	for _, child := range cn.Children {

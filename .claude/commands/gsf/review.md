@@ -132,7 +132,13 @@ gsf review --codebase --entry "internal/ast" --json
 
 ## Step 4: Render and Open
 
+Use `--serve` to enable interactive commenting (auto-saves to disk), or `--open` for static HTML:
+
 ```bash
+# With comment support (recommended):
+gsf review --render /tmp/gsf-flow.json --serve
+
+# Static HTML (no auto-save, but has manual export):
 gsf review --render /tmp/gsf-flow.json --open
 ```
 
@@ -142,3 +148,5 @@ Tell the user:
 - Blue card above code = AI's explanation of the function's role
 - Underlined function names in code are clickable — click to jump to that function's detail in the tree
 - In diff mode: Source/Diff toggle in header — switch between syntax-highlighted source and colored diff view (green=add, red=delete). In codebase mode the toggle is disabled
+- Click any line number to add a comment — comments are auto-saved to `review-comments.json` (in serve mode) or can be exported via the Export button (in static mode)
+- After reviewing, use `/gsf:fix` to have AI read the comments and apply code changes

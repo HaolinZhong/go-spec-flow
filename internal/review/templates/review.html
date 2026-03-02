@@ -322,6 +322,7 @@ body {
 .diff-del-line { cursor: default !important; }
 .diff-del-line:hover { color: #555 !important; border-right-color: #333 !important; }
 
+.source-line { display: block; }
 .comment-row {
   display: block;
   padding: 6px 8px 6px 90px;
@@ -876,7 +877,7 @@ function renderSource(code, startLine, file) {
   let numbered = '';
   highlightedLines.forEach((line, i) => {
     const num = startLine + i;
-    numbered += '<span class="line-num">' + num + '</span>' + line + '\n';
+    numbered += '<span class="source-line"><span class="line-num">' + num + '</span>' + line + '\n</span>';
   });
   return '<pre>' + numbered + '</pre>';
 }
@@ -983,23 +984,20 @@ function addCommentUI(lineEl, file, line, isDel) {
     '</div>';
 
   // Insert after the current line span
-  const parentSpan = lineEl.closest('span.diff-line');
+  const parentSpan = lineEl.closest('span.diff-line, span.source-line');
   if (parentSpan) {
     parentSpan.insertAdjacentElement('afterend', row);
   } else {
-    // Source mode: line-num is directly in pre, insert after the line's newline
-    // Find the line content after this line-num and insert after it
-    const pre = lineEl.closest('pre');
-    if (pre) {
-      // We need to wrap line+code in a container, but pre uses raw text nodes.
-      // Simpler: append the comment row after the pre
-      const codeContent = document.getElementById('code-content');
-      if (codeContent) codeContent.appendChild(row);
-    }
+    const codeContent = document.getElementById('code-content');
+    if (codeContent) codeContent.appendChild(row);
   }
   // Focus the textarea
   const ta = row.querySelector('.comment-input');
-  if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  if (ta) {
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
 }
 
 function submitComment(btn) {

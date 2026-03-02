@@ -101,6 +101,17 @@ After all comments are processed:
 You can delete review-comments.json if no longer needed.
 ```
 
+## Step 5: Clean Up Processed Comments
+
+After all comments are processed, **remove them from `review-comments.json`**:
+
+1. Read the current file
+2. Remove all processed comments from the `comments` array
+3. If no comments remain, delete `review-comments.json`
+4. If some comments remain (user chose to skip some), write back the remaining ones
+
+This keeps the file clean for the next review cycle.
+
 ## Rules
 
 - Read each target file before modifying — never guess at code structure
@@ -108,4 +119,4 @@ You can delete review-comments.json if no longer needed.
 - Keep modifications minimal and focused on what the comment asks
 - If a comment describes a problem without a clear solution, ask the user
 - Process comments in file order to minimize file re-reads
-- Do NOT auto-delete review-comments.json — let the user decide
+- Always clean up processed comments from the file after processing

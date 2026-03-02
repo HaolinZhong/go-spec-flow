@@ -361,6 +361,18 @@ body {
 .comment-btn:hover { background: #1177bb; }
 .comment-btn.del { background: #5a1d1d; }
 .comment-btn.del:hover { background: #7a2d2d; }
+.comment-btn.resolve { background: #2e6b3e; }
+.comment-btn.resolve:hover { background: #3a8a4e; }
+.stop-btn {
+  background: #5a1d1d;
+  border: none;
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.stop-btn:hover { background: #7a2d2d; }
 .comment-badge {
   font-size: 11px;
   padding: 2px 8px;
@@ -386,6 +398,7 @@ body {
   </div>
   <span class="comment-badge" id="comment-count" style="display:none">0 comments</span>
   <button class="comment-btn" id="export-comments-btn" style="display:none;font-size:11px;padding:2px 8px" onclick="exportComments()">Export</button>
+  {{if .ServeMode}}<button class="stop-btn" onclick="stopServer()">Stop Server</button>{{end}}
   <span class="shortcuts-hint">Alt+← Back ｜ Alt+→ Forward ｜ Click <span style="color:#4fc1ff;text-decoration:underline dotted">underlined</span> to jump ｜ Click line number to comment</span>
 </div>
 
@@ -960,6 +973,23 @@ function exportComments() {
   URL.revokeObjectURL(a.href);
 }
 
+function stopServer() {
+  if (!confirm('Stop the review server?')) return;
+  fetch('/shutdown', { method: 'POST' })
+    .then(() => { document.title = '(stopped) ' + document.title; })
+    .catch(() => {});
+}
+
+function resolveComment(btn) {
+  const row = btn.closest('.comment-row');
+  const key = row.dataset.key;
+  comments.delete(key);
+  row.remove();
+  updateCommentIndicators();
+  updateCommentCount();
+  saveComments();
+}
+
 function addCommentUI(lineEl, file, line, isDel) {
   if (isDel) return; // deleted lines not commentable
   const key = commentKey(file, line);
@@ -980,6 +1010,7 @@ function addCommentUI(lineEl, file, line, isDel) {
   row.innerHTML = '<div class="comment-input-wrap">' +
     '<textarea class="comment-input" placeholder="Add comment for ' + escapeHTML(file) + ':' + line + '..." rows="2">' + escapeHTML(existingComment) + '</textarea>' +
     '<button class="comment-btn" onclick="submitComment(this)">Save</button>' +
+    (existingComment ? '<button class="comment-btn resolve" onclick="resolveComment(this)">Resolve</button>' : '') +
     (existingComment ? '<button class="comment-btn del" onclick="deleteComment(this)">Delete</button>' : '') +
     '</div>';
 

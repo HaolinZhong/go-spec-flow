@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	goast "github.com/zhlie/go-spec-flow/internal/ast"
 	"github.com/zhlie/go-spec-flow/internal/review"
@@ -155,16 +156,22 @@ func serveReview(tree *review.FlowTree, dir string) error {
 	if err != nil {
 		absDir = dir
 	}
-	url, err := review.StartServer(tree, absDir, 0)
+	config := review.ServerConfig{
+		IdleTimeout: 30 * time.Minute,
+	}
+	url, done, err := review.StartServer(tree, absDir, config)
 	if err != nil {
 		return err
 	}
 	openBrowser(url)
 
-	// Block until interrupted
+	// Block until interrupted or server signals done (shutdown/idle)
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
-	<-sig
+	select {
+	case <-sig:
+	case <-done:
+	}
 	fmt.Fprintln(os.Stderr, "\nServer stopped.")
 	return nil
 }

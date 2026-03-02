@@ -12,8 +12,8 @@ import (
 )
 
 // BuildDiffTree builds a flow tree from a git diff range.
-// The tree is organized by changed files, with each file's diff as the code.
-// When a project is loadable, trace/callers are used to add structural context.
+// The tree is organized by call chains among changed functions, with bridge nodes
+// connecting related changes. Non-Go files are grouped under "Non-code Files".
 func BuildDiffTree(dir, diffRange string, maxDepth int) (*FlowTree, error) {
 	if maxDepth <= 0 {
 		maxDepth = 2
@@ -36,115 +36,28 @@ func BuildDiffTree(dir, diffRange string, maxDepth int) (*FlowTree, error) {
 	// Try loading project for structural context (non-fatal if fails)
 	project, _ := goast.LoadProject(dir)
 
-	for i, df := range diffs {
-		node := &FlowNode{
-			ID:       fmt.Sprintf("file-%d", i),
-			Label:    df.Path,
-			File:     df.Path,
-			Diff:     df.Content,
-			NodeType: "file",
-			IsNew:    df.IsNew,
-		}
+	// Collect only functions with actual diffs
+	changedFuncs := collectChangedFuncs(project, diffs)
 
-		// Try to read current file source for source view
-		if source, err := readEntireFile(filepath.Join(dir, df.Path)); err == nil {
-			node.Code = source
+	if len(changedFuncs) > 0 && project != nil {
+		// Build call graph and organize into flows
+		graph := buildCallGraph(project, changedFuncs, maxDepth)
+		flowRoots := buildFlowRoots(project, graph, changedFuncs)
+		tree.Roots = append(tree.Roots, flowRoots...)
+	} else if len(changedFuncs) > 0 {
+		// No project loaded — output changed functions as flat list
+		for _, cf := range changedFuncs {
+			tree.Roots = append(tree.Roots, changedFuncToFlowNode(cf))
 		}
+	}
 
-		// If project loaded and it's a Go file, add function-level children via trace
-		if project != nil && strings.HasSuffix(df.Path, ".go") {
-			children := buildFuncNodesFromDiff(project, dir, df, maxDepth)
-			if len(children) > 0 {
-				node.Children = children
-			}
-		}
-
-		tree.Roots = append(tree.Roots, node)
+	// Group non-Go files
+	nonCodeRoot := buildNonCodeRoot(dir, diffs)
+	if nonCodeRoot != nil {
+		tree.Roots = append(tree.Roots, nonCodeRoot)
 	}
 
 	return tree, nil
-}
-
-// buildFuncNodesFromDiff extracts function declarations from a changed Go file
-// and creates child nodes with trace information.
-func buildFuncNodesFromDiff(project *goast.Project, dir string, df *GitDiffFile, maxDepth int) []*FlowNode {
-	// Find package that contains this file
-	var nodes []*FlowNode
-	pkgs := project.RawPackages()
-
-	for pkgPath, pkg := range pkgs {
-		for _, file := range pkg.Syntax {
-			pos := pkg.Fset.Position(file.Pos())
-			if !strings.HasSuffix(pos.Filename, df.Path) {
-				continue
-			}
-
-			// Collect sibling function names for dedup (layer 1)
-			siblings := make(map[string]bool)
-			for _, decl := range file.Decls {
-				fn, ok := decl.(*ast.FuncDecl)
-				if !ok || fn.Body == nil {
-					continue
-				}
-				siblings[fn.Name.Name] = true
-			}
-
-			// Per-file seen set for cross-branch dedup (layer 2)
-			seen := make(map[string]bool)
-
-			// Extract function declarations from this file
-			for _, decl := range file.Decls {
-				fn, ok := decl.(*ast.FuncDecl)
-				if !ok || fn.Body == nil {
-					continue
-				}
-
-				startPos := pkg.Fset.Position(fn.Pos())
-				endPos := pkg.Fset.Position(fn.End())
-
-				funcName := fn.Name.Name
-				nodeType := "function"
-				if fn.Recv != nil && len(fn.Recv.List) > 0 {
-					nodeType = "method"
-				}
-
-				code, _ := readFileLines(startPos.Filename, startPos.Line, endPos.Line)
-
-				funcDiff := extractFuncDiff(df.Content, startPos.Line, endPos.Line)
-
-				child := &FlowNode{
-					ID:        fmt.Sprintf("func-%s-%s", pkgPath, funcName),
-					Label:     funcName,
-					Package:   pkgPath,
-					File:      startPos.Filename,
-					LineStart: startPos.Line,
-					LineEnd:   endPos.Line,
-					Code:      code,
-					Diff:      funcDiff,
-					NodeType:  nodeType,
-				}
-
-				// Mark this function as seen (it's a top-level node)
-				seen[pkgPath+"."+funcName] = true
-
-				// Add trace children with sibling filtering + seen dedup
-				tracer := goast.NewTracer(project, goast.TraceConfig{MaxDepth: maxDepth})
-				chain := tracer.Trace(pkgPath, funcName)
-				if chain.Root != nil {
-					for _, callChild := range chain.Root.Children {
-						childNode := callNodeToFlowNode(project, callChild, siblings, seen)
-						if childNode != nil {
-							child.Children = append(child.Children, childNode)
-						}
-					}
-				}
-
-				nodes = append(nodes, child)
-			}
-		}
-	}
-
-	return nodes
 }
 
 // BuildCodebaseTree builds a flow tree from a project entry point.

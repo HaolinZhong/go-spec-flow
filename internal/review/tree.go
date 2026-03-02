@@ -21,5 +21,19 @@ type FlowNode struct {
 	Diff        string      `json:"diff,omitempty"`        // raw diff content (diff mode only)
 	NodeType    string      `json:"nodeType"`              // "function" / "method" / "rpc" / "mq" / "file"
 	IsNew       bool        `json:"isNew"`                 // diff mode: new file/function
+	IsBridge    bool        `json:"isBridge,omitempty"`    // diff mode: bridge function connecting changed funcs
 	Children    []*FlowNode `json:"children,omitempty"`
+}
+
+// ChangedFunc represents a function with actual diff in a changed file.
+type ChangedFunc struct {
+	Package   string // package path
+	Name      string // function name
+	File      string // file path
+	LineStart int
+	LineEnd   int
+	Code      string // source code
+	FuncDiff  string // diff content for this function
+	NodeType  string // "function" or "method"
+	IsNew     bool
 }

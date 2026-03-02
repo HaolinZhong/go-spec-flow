@@ -33,78 +33,83 @@ export PATH=$HOME/sdk/go1.22.5/bin:$PATH
 
 Optional: add `--depth N` to increase call chain trace depth (default: 2 for diff, 4 for codebase). Use higher values (e.g., `--depth 6`) if important functions are cut off by depth limits.
 
-## Step 3: AI Orchestration — Build Master Flow
+## Step 3: AI Orchestration — Add Descriptions and Organize
 
-Read `/tmp/gsf-raw.json`. This contains the raw structural tree (packages/files/functions with source code).
+Read `/tmp/gsf-raw.json`. The JSON is **pre-organized by call chains**:
 
-Your job: **build a single master flow (主动线) that tells the story of the code's lifecycle, then nest sub-flows under each step**.
+- **Chain flows**: Groups of changed functions connected by call relationships, with bridge functions (unchanged functions that connect them) in between
+- **Isolated flows**: Changed functions with no call relationship to other changed functions
+- **Non-code Files**: Non-Go changed files grouped together
 
-### Think like a tour guide:
+### For diff mode:
 
-1. **Understand the code** — Read through every node's code to understand what each function does
-2. **Identify the master flow** — What is the end-to-end lifecycle?
-   - For codebase mode: "When a command/request comes in, what happens step by step?" (e.g., CLI parses args → loads config → runs analysis → generates output)
-   - For diff mode: "What is this change doing, and in what order does it flow?" (e.g., new flag added → new function parses input → existing renderer updated)
-3. **Identify sub-flows** — Within each step of the master flow, group the relevant functions
-4. **Build a three-layer tree**:
-   - **Layer 1 (root)**: Single master flow node — the overall story. **Its `code` field MUST contain the primary entry function's complete code** (e.g., the main handler, the top-level exported function). This is what readers see first when opening the review
-   - **Layer 2 (steps)**: Each major step in the lifecycle, in execution order. **Each step's `code` field MUST contain the entry function's complete code** (copy from the original node) — this lets readers see real code at the master flow level
-   - **Layer 3 (functions)**: The actual code nodes under each step (including the entry function with its detailed description)
-5. **Add descriptions at every level**:
-   - `FlowTree.description`: 1-2 sentence overview of the entire review
-   - Master flow root's `description`: The complete lifecycle narrative — "When X happens, first A, then B, then C..."
-   - Each step's `description`: What this step does, why it matters, how it connects to the previous/next step
-   - Each function node's `description`: This function's specific role within its step
+The JSON already has the structure. Your job is to **add descriptions and optionally reorganize**:
 
-### Small package rule:
+1. **Read every node's code** to understand what each function does
+2. **Add `FlowTree.description`**: 1-2 sentence overview of the entire change
+3. **For each flow root**: Add a `description` explaining what this flow does as a whole
+4. **For each function node**: Add a `description` explaining this function's role
+5. **Bridge nodes** (`isBridge: true`): Add a brief description of how they connect the changed functions
+6. **Optionally reorganize**: You may merge related flows, reorder nodes, or create a master flow wrapper if it tells a better story
 
-If there are fewer than 5 functions total, skip layer 2 (steps) and put functions directly under the master flow root (two-layer structure).
+### For codebase mode:
+
+The JSON is organized by file/package. Your job is heavier — **build a master flow (主动线)**:
+
+1. **Understand the code** — Read through every node's code
+2. **Identify the master flow** — "When a command/request comes in, what happens step by step?"
+3. **Build a three-layer tree**:
+   - **Layer 1 (root)**: Single master flow node — the overall story. Its `code` field MUST contain the primary entry function's complete code
+   - **Layer 2 (steps)**: Each major step in the lifecycle, in execution order
+   - **Layer 3 (functions)**: The actual code nodes under each step
+4. **Add descriptions at every level**
+
+### Small change rule:
+
+If there are fewer than 5 function nodes total, skip reorganization — just add descriptions to existing nodes.
 
 ### Output format:
 
-Write the orchestrated JSON to `/tmp/gsf-flow.json`. The JSON structure is:
+Write the orchestrated JSON to `/tmp/gsf-flow.json`. Keep the same JSON structure:
 
 ```json
 {
-  "mode": "codebase",
-  "title": "Architecture Review: <project>",
+  "mode": "diff",
+  "title": "Diff Review: ...",
   "description": "Overview of the review...",
   "roots": [
     {
-      "id": "master-flow",
-      "label": "主动线: Complete Lifecycle Name",
-      "description": "When a request arrives, the system first does X, then Y, then Z...",
+      "id": "flow-0",
+      "label": "主动线: Entry Function Name",
+      "description": "This flow covers how X calls Y through Z...",
       "nodeType": "file",
-      "code": "func MainEntry(...) { ... }  // ← primary entry function code here",
+      "code": "func Entry(...) { ... }",
       "children": [
         {
-          "id": "step-1",
-          "label": "1. Step Name",
-          "description": "This step handles X. It receives Y from the previous step and produces Z for the next step.",
-          "nodeType": "file",
-          "code": "func EntryFunction(...) { ... }  // ← COPY the entry function's full code here",
-          "children": [
-            {
-              "id": "original-node-id",
-              "label": "FunctionName",
-              "description": "Role of this function within this step...",
-              "package": "...",
-              "file": "...",
-              "lineStart": 0,
-              "lineEnd": 0,
-              "code": "... (keep original code) ...",
-              "nodeType": "function",
-              "children": []
-            }
-          ]
+          "id": "flow-0-entry-pkg-Entry",
+          "label": "Entry",
+          "description": "Entry point that initiates the flow...",
+          "package": "...",
+          "file": "...",
+          "code": "...",
+          "diff": "...",
+          "nodeType": "function"
         },
         {
-          "id": "step-2",
-          "label": "2. Next Step Name",
-          "description": "After step 1 completes, this step...",
-          "nodeType": "file",
-          "code": "func NextEntryFunc(...) { ... }  // ← entry function code",
-          "children": [...]
+          "id": "flow-0-bridge-pkg-Middle",
+          "label": "Middle",
+          "description": "Bridge: connects Entry to Target by...",
+          "isBridge": true,
+          "code": "...",
+          "nodeType": "function"
+        },
+        {
+          "id": "flow-0-func-pkg-Target",
+          "label": "Target",
+          "description": "Handles the actual change...",
+          "code": "...",
+          "diff": "...",
+          "nodeType": "function"
         }
       ]
     }
@@ -113,21 +118,17 @@ Write the orchestrated JSON to `/tmp/gsf-flow.json`. The JSON structure is:
 ```
 
 **Rules:**
-- The `roots` array MUST have exactly ONE element — the master flow
 - Keep ALL original code in nodes — never truncate or summarize code
-- In diff mode, nodes have both `code` (source) and `diff` (raw diff) fields. Keep both — the HTML toggle lets users switch between views
-- Each step node's `code` MUST contain its entry function's complete code (copied from the original node). This lets readers see code at the master flow level and click function names to navigate deeper
-- Steps (layer 2) should be numbered and in execution/logical order
-- **EVERY node at EVERY level MUST have a description** — including deep trace chain nodes (layer 3, 4, 5...). No node should be left without a description. For deep call chain nodes, a brief one-sentence description is fine (e.g., "解析 diff 文本，按文件拆分为独立的 GitDiffFile 列表")
-- Step descriptions should explain the connection to previous/next steps
+- In diff mode, nodes have both `code` (source) and `diff` (raw diff) fields. Keep both
+- **EVERY node MUST have a description** — including bridge nodes. For simple nodes, a brief one-sentence description is fine
 - Descriptions should be in the same language as the user's conversation
+- Do NOT remove `isBridge` flags from bridge nodes
 
-### For large codebases:
+### For large diffs:
 
-If the JSON is too large (>500KB), tell the user and suggest reviewing by package:
+If the JSON is too large (>500KB), tell the user and suggest narrowing the scope:
 ```
-The codebase is large. I recommend reviewing by package:
-gsf review --codebase --entry "internal/ast" --json
+The diff is large. I recommend reviewing fewer commits or a specific package.
 ```
 
 ## Step 4: Render and Open

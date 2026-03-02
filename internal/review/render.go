@@ -11,7 +11,8 @@ import (
 var templateFS embed.FS
 
 // RenderHTML renders a FlowTree as a self-contained HTML file.
-func RenderHTML(tree *FlowTree, w io.Writer) error {
+// If serveMode is true, the HTML will auto-save comments to the server.
+func RenderHTML(tree *FlowTree, w io.Writer, serveMode bool) error {
 	tmplContent, err := templateFS.ReadFile("templates/review.html")
 	if err != nil {
 		return err
@@ -32,6 +33,7 @@ func RenderHTML(tree *FlowTree, w io.Writer) error {
 		"Mode":        tree.Mode,
 		"Description": tree.Description,
 		"TreeJSON":    template.JS(treeJSON),
+		"ServeMode":   serveMode,
 	}
 
 	return tmpl.Execute(w, data)

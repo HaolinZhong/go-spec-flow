@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
+	"path/filepath"
 	"runtime"
 
 	goast "github.com/zhlie/go-spec-flow/internal/ast"
@@ -23,6 +25,7 @@ var (
 	reviewJSON     bool
 	reviewRender   string
 	reviewDepth    int
+	reviewServe    bool
 )
 
 var reviewCmd = &cobra.Command{
@@ -95,6 +98,11 @@ Examples:
 			return enc.Encode(tree)
 		}
 
+		// --serve mode: start HTTP server
+		if reviewServe {
+			return serveReview(tree, dir)
+		}
+
 		// Default: render HTML
 		return renderHTML(tree)
 	},
@@ -111,6 +119,9 @@ func renderFromJSON(jsonFile string) error {
 		return fmt.Errorf("parsing JSON: %w", err)
 	}
 
+	if reviewServe {
+		return serveReview(&tree, ".")
+	}
 	return renderHTML(&tree)
 }
 
@@ -126,7 +137,7 @@ func renderHTML(tree *review.FlowTree) error {
 	}
 	defer f.Close()
 
-	if err := review.RenderHTML(tree, f); err != nil {
+	if err := review.RenderHTML(tree, f, false); err != nil {
 		return fmt.Errorf("rendering HTML: %w", err)
 	}
 
@@ -136,6 +147,25 @@ func renderHTML(tree *review.FlowTree) error {
 		openBrowser(output)
 	}
 
+	return nil
+}
+
+func serveReview(tree *review.FlowTree, dir string) error {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		absDir = dir
+	}
+	url, err := review.StartServer(tree, absDir, 0)
+	if err != nil {
+		return err
+	}
+	openBrowser(url)
+
+	// Block until interrupted
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt)
+	<-sig
+	fmt.Fprintln(os.Stderr, "\nServer stopped.")
 	return nil
 }
 
@@ -201,5 +231,6 @@ func init() {
 	reviewCmd.Flags().BoolVar(&reviewJSON, "json", false, "output FlowTree as JSON to stdout")
 	reviewCmd.Flags().StringVar(&reviewRender, "render", "", "render HTML from a JSON file")
 	reviewCmd.Flags().IntVar(&reviewDepth, "depth", 0, "max call chain trace depth (default: 2 for diff, 4 for codebase)")
+	reviewCmd.Flags().BoolVar(&reviewServe, "serve", false, "start local server with comment support (auto-opens browser)")
 	rootCmd.AddCommand(reviewCmd)
 }

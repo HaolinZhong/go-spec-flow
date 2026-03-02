@@ -301,6 +301,74 @@ body {
   user-select: none;
   border-right: 1px solid #333;
 }
+
+/* Comment system */
+.line-num, .diff-line-num { cursor: pointer; }
+.line-num:hover, .diff-line-num:hover:not(.diff-del-line) {
+  color: #4fc1ff;
+  border-right-color: #4fc1ff;
+}
+.line-num.has-comment, .diff-line-num.has-comment {
+  color: #e8a427;
+  border-right-color: #e8a427;
+  position: relative;
+}
+.line-num.has-comment::after, .diff-line-num.has-comment::after {
+  content: '\1F4AC';
+  position: absolute;
+  right: -14px;
+  font-size: 9px;
+}
+.diff-del-line { cursor: default !important; }
+.diff-del-line:hover { color: #555 !important; border-right-color: #333 !important; }
+
+.comment-row {
+  display: block;
+  padding: 6px 8px 6px 90px;
+  background: #2a2d3e;
+  border-left: 3px solid #e8a427;
+}
+.comment-input-wrap {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+.comment-input {
+  flex: 1;
+  background: #1e1e2e;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #d4d4d4;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  resize: vertical;
+  min-height: 32px;
+  outline: none;
+}
+.comment-input:focus { border-color: #4fc1ff; }
+.comment-btn {
+  background: #0e639c;
+  border: none;
+  color: #fff;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.comment-btn:hover { background: #1177bb; }
+.comment-btn.del { background: #5a1d1d; }
+.comment-btn.del:hover { background: #7a2d2d; }
+.comment-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #e8a427;
+  color: #1e1e1e;
+  font-weight: 600;
+  flex-shrink: 0;
+}
 </style>
 </head>
 <body>
@@ -315,7 +383,9 @@ body {
     <button class="toggle-btn" id="toggle-source" onclick="setViewMode('source')">Source</button>
     <button class="toggle-btn" id="toggle-diff" onclick="setViewMode('diff')">Diff</button>
   </div>
-  <span class="shortcuts-hint">Alt+← Back ｜ Alt+→ Forward ｜ Click <span style="color:#4fc1ff;text-decoration:underline dotted">underlined</span> to jump</span>
+  <span class="comment-badge" id="comment-count" style="display:none">0 comments</span>
+  <button class="comment-btn" id="export-comments-btn" style="display:none;font-size:11px;padding:2px 8px" onclick="exportComments()">Export</button>
+  <span class="shortcuts-hint">Alt+← Back ｜ Alt+→ Forward ｜ Click <span style="color:#4fc1ff;text-decoration:underline dotted">underlined</span> to jump ｜ Click line number to comment</span>
 </div>
 
 <div id="app">
@@ -329,8 +399,12 @@ body {
 <script>
 const flowData = {{.TreeJSON}};
 const mode = "{{.Mode}}";
+const serveMode = {{.ServeMode}};
 let viewMode = 'source'; // 'source' or 'diff'
 let currentNode = null;
+
+// Comment system: key = "file:line", value = comment text
+const comments = new Map();
 
 // Node index for cross-navigation: label -> {node, labelEl, toggleEl, childContainer}
 const nodeIndex = new Map();
@@ -619,6 +693,9 @@ function showCode(node) {
 
   // Post-process: linkify function names that exist in nodeIndex
   linkifyCode(panel.querySelector('#code-content'));
+
+  // Attach comment click handlers to line numbers
+  attachCommentHandlers(panel.querySelector('#code-content'), node);
 }
 
 // Navigate to a node by function name
@@ -808,7 +885,188 @@ function escapeHTML(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// Resize handle
+// ── Comment system ──
+
+function commentKey(file, line) { return file + ':' + line; }
+
+function updateCommentCount() {
+  const badge = document.getElementById('comment-count');
+  const exportBtn = document.getElementById('export-comments-btn');
+  const n = comments.size;
+  if (n > 0) {
+    badge.textContent = n + (n === 1 ? ' comment' : ' comments');
+    badge.style.display = '';
+    if (!serveMode) exportBtn.style.display = '';
+  } else {
+    badge.style.display = 'none';
+    exportBtn.style.display = 'none';
+  }
+}
+
+function saveComments() {
+  if (!serveMode) return;
+  const data = buildCommentsJSON();
+  fetch('/comments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).catch(e => console.warn('Auto-save failed:', e));
+}
+
+function buildCommentsJSON() {
+  const arr = [];
+  comments.forEach((text, key) => {
+    const [file, lineStr] = [key.substring(0, key.lastIndexOf(':')), key.substring(key.lastIndexOf(':') + 1)];
+    arr.push({ file, line: parseInt(lineStr), codeContext: getCodeContext(file, parseInt(lineStr)), comment: text });
+  });
+  arr.sort((a, b) => a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line);
+  return {
+    reviewTitle: flowData.title || '',
+    mode: mode,
+    exportedAt: new Date().toISOString(),
+    comments: arr
+  };
+}
+
+function getCodeContext(file, line) {
+  // Try to find the code line from current node or any node
+  function searchNode(node) {
+    if (node.file && node.file.endsWith(file) && node.code && node.lineStart) {
+      const offset = line - node.lineStart;
+      const lines = node.code.split('\n');
+      if (offset >= 0 && offset < lines.length) return lines[offset].trim();
+    }
+    for (const ch of (node.children || [])) {
+      const r = searchNode(ch);
+      if (r) return r;
+    }
+    return '';
+  }
+  for (const root of (flowData.roots || [])) {
+    const r = searchNode(root);
+    if (r) return r;
+  }
+  return '';
+}
+
+function exportComments() {
+  const data = buildCommentsJSON();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'review-comments.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function addCommentUI(lineEl, file, line, isDel) {
+  if (isDel) return; // deleted lines not commentable
+  const key = commentKey(file, line);
+  // Check if comment row already exists (toggle off)
+  const existing = lineEl.closest('span.diff-line, pre')?.querySelector('.comment-row[data-key="' + key + '"]');
+  if (existing) { existing.remove(); return; }
+  // Also check next sibling
+  const nextEl = lineEl.parentElement?.nextElementSibling;
+  if (nextEl && nextEl.classList.contains('comment-row') && nextEl.dataset.key === key) {
+    nextEl.remove(); return;
+  }
+
+  const row = document.createElement('span');
+  row.className = 'comment-row';
+  row.dataset.key = key;
+
+  const existingComment = comments.get(key) || '';
+  row.innerHTML = '<div class="comment-input-wrap">' +
+    '<textarea class="comment-input" placeholder="Add comment for ' + escapeHTML(file) + ':' + line + '..." rows="2">' + escapeHTML(existingComment) + '</textarea>' +
+    '<button class="comment-btn" onclick="submitComment(this)">Save</button>' +
+    (existingComment ? '<button class="comment-btn del" onclick="deleteComment(this)">Delete</button>' : '') +
+    '</div>';
+
+  // Insert after the current line span
+  const parentSpan = lineEl.closest('span.diff-line');
+  if (parentSpan) {
+    parentSpan.insertAdjacentElement('afterend', row);
+  } else {
+    // Source mode: line-num is directly in pre, insert after the line's newline
+    // Find the line content after this line-num and insert after it
+    const pre = lineEl.closest('pre');
+    if (pre) {
+      // We need to wrap line+code in a container, but pre uses raw text nodes.
+      // Simpler: append the comment row after the pre
+      const codeContent = document.getElementById('code-content');
+      if (codeContent) codeContent.appendChild(row);
+    }
+  }
+  // Focus the textarea
+  const ta = row.querySelector('.comment-input');
+  if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+
+function submitComment(btn) {
+  const row = btn.closest('.comment-row');
+  const key = row.dataset.key;
+  const text = row.querySelector('.comment-input').value.trim();
+  if (!text) { deleteComment(btn); return; }
+  comments.set(key, text);
+  row.remove();
+  updateCommentIndicators();
+  updateCommentCount();
+  saveComments();
+}
+
+function deleteComment(btn) {
+  const row = btn.closest('.comment-row');
+  const key = row.dataset.key;
+  comments.delete(key);
+  row.remove();
+  updateCommentIndicators();
+  updateCommentCount();
+  saveComments();
+}
+
+function updateCommentIndicators() {
+  // Update all visible line-num spans
+  document.querySelectorAll('.line-num, .diff-line-num').forEach(el => {
+    const file = el.dataset.file;
+    const line = el.dataset.line;
+    if (!file || !line) return;
+    const key = commentKey(file, parseInt(line));
+    el.classList.toggle('has-comment', comments.has(key));
+  });
+}
+
+function attachCommentHandlers(container, node) {
+  if (!container) return;
+  container.querySelectorAll('.line-num').forEach(el => {
+    const line = parseInt(el.textContent);
+    if (!line || !node.file) return;
+    el.dataset.file = node.file;
+    el.dataset.line = line;
+    el.classList.toggle('has-comment', comments.has(commentKey(node.file, line)));
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      addCommentUI(el, node.file, line, false);
+    });
+  });
+  container.querySelectorAll('.diff-line-num').forEach(el => {
+    const line = parseInt(el.textContent);
+    if (!line || !node.file) return;
+    const isDel = el.closest('.diff-del') !== null;
+    el.dataset.file = node.file;
+    el.dataset.line = line;
+    if (isDel) {
+      el.classList.add('diff-del-line');
+    } else {
+      el.classList.toggle('has-comment', comments.has(commentKey(node.file, line)));
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        addCommentUI(el, node.file, line, false);
+      });
+    }
+  });
+}
+
+// ── Resize handle
 const handle = document.getElementById('resize-handle');
 const treePanel = document.getElementById('tree-panel');
 let isResizing = false;

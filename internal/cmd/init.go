@@ -14,16 +14,24 @@ import (
 //go:embed all:embed_data
 var embeddedFiles embed.FS
 
+var initTarget string
+
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Install gsf skills and commands into the project",
 	Long: `Installs gsf command files for Claude Code or Coco integration.
 Detects whether the project uses .claude/ or .coco/ and installs accordingly.
+Use --target to override detection (e.g. --target coco, --target claude).
 
 Files are installed to <target>/commands/gsf/ so they become /gsf:<name> commands.
 For example, gsf-review.md becomes /gsf:review.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		targetDir := detectTargetDir()
+		targetDir := initTarget
+		if targetDir == "" {
+			targetDir = detectTargetDir()
+		} else {
+			targetDir = "." + targetDir // "coco" → ".coco"
+		}
 		commandsDir := filepath.Join(targetDir, "commands", "gsf")
 		fmt.Printf("Installing gsf commands to %s/\n", commandsDir)
 
@@ -71,5 +79,6 @@ func detectTargetDir() string {
 }
 
 func init() {
+	initCmd.Flags().StringVar(&initTarget, "target", "", "target tool directory: claude or coco (default: auto-detect)")
 	rootCmd.AddCommand(initCmd)
 }

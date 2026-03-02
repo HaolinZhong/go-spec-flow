@@ -6,6 +6,12 @@
 
 ## 安装
 
+**最简单的方式**：把这个 repo 地址发给你的 coding agent（Claude Code / Coco），让它帮你安装：
+
+> 帮我安装 https://github.com/HaolinZhong/go-spec-flow ，运行 go install 然后 gsf init
+
+**手动安装**：
+
 ```bash
 # 需要 Go 1.22+
 go install github.com/zhlie/go-spec-flow/cmd/gsf@latest
@@ -26,7 +32,10 @@ go build -o gsf ./cmd/gsf
 
 ```bash
 cd your-go-project
-gsf init
+
+gsf init                # 自动检测 .claude/ 或 .coco/
+gsf init --target claude  # 指定安装到 .claude/
+gsf init --target coco    # 指定安装到 .coco/
 ```
 
 这会把 gsf 的 slash commands 安装到 `.claude/commands/gsf/`（或 `.coco/commands/gsf/`），之后在 Claude Code 或 Coco 中可以直接用 `/gsf:review` 等命令。

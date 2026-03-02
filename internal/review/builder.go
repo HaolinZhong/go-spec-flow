@@ -112,6 +112,11 @@ func buildFuncNodesFromDiff(project *goast.Project, dir string, df *GitDiffFile,
 
 				funcDiff := extractFuncDiff(df.Content, startPos.Line, endPos.Line)
 
+				// Skip functions with no actual diff
+				if funcDiff == "" {
+					continue
+				}
+
 				child := &FlowNode{
 					ID:        fmt.Sprintf("func-%s-%s", pkgPath, funcName),
 					Label:     funcName,

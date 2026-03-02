@@ -102,40 +102,79 @@ func splitDiffByFile(diff string) []*GitDiffFile {
 	return files
 }
 
-// extractFuncDiff extracts diff hunks that overlap with a function's line range.
+// extractFuncDiff extracts diff lines that fall within a function's line range.
 // lineStart/lineEnd refer to the NEW file's line numbers.
+// Only diff lines whose new-file line number is within [lineStart, lineEnd] are kept.
+// The original @@ header is preserved (not rewritten) since it's only used for display.
 func extractFuncDiff(fileDiff string, lineStart, lineEnd int) string {
 	lines := strings.Split(fileDiff, "\n")
 	var result []string
-	var inHunk bool
-	var hunkNewStart, hunkNewEnd int
-	var hunkBuf []string
+
+	// hunkLine tracks each line in a hunk with its new-file line number.
+	type hunkLine struct {
+		text    string
+		newLine int  // new-file line number (0 for '-' lines)
+		isDel   bool // true for '-' lines
+	}
+
+	var hunkHeader string
+	var hunkLines []hunkLine
+	var newLine int
 
 	flushHunk := func() {
-		if inHunk && hunkNewEnd >= lineStart && hunkNewStart <= lineEnd {
-			result = append(result, hunkBuf...)
+		if hunkHeader == "" {
+			return
 		}
-		hunkBuf = nil
-		inHunk = false
+
+		// Find the range of lines to keep: +/space lines with newLine in [lineStart, lineEnd]
+		firstKeep := -1
+		lastKeep := -1
+		for i, hl := range hunkLines {
+			if !hl.isDel && hl.newLine >= lineStart && hl.newLine <= lineEnd {
+				if firstKeep == -1 {
+					firstKeep = i
+				}
+				lastKeep = i
+			}
+		}
+
+		if firstKeep == -1 {
+			// No lines in range — skip this hunk entirely
+			hunkHeader = ""
+			hunkLines = nil
+			return
+		}
+
+		// Keep all lines between firstKeep and lastKeep (inclusive),
+		// which preserves '-' lines adjacent to in-range '+'/space lines.
+		result = append(result, hunkHeader)
+		for i := firstKeep; i <= lastKeep; i++ {
+			result = append(result, hunkLines[i].text)
+		}
+
+		hunkHeader = ""
+		hunkLines = nil
 	}
 
 	for _, line := range lines {
 		if strings.HasPrefix(line, "@@") {
 			flushHunk()
-			// Parse: @@ -old,count +new,count @@
-			hunkNewStart, hunkNewEnd = parseHunkRange(line)
-			inHunk = true
-			hunkBuf = append(hunkBuf, line)
+			hunkHeader = line
+			newLine, _ = parseHunkRange(line)
+			hunkLines = nil
 		} else if strings.HasPrefix(line, "diff ") || strings.HasPrefix(line, "index ") ||
 			strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++") ||
 			strings.HasPrefix(line, "new file") || strings.HasPrefix(line, "old mode") ||
 			strings.HasPrefix(line, "new mode") {
 			continue // skip file headers
-		} else if inHunk {
-			hunkBuf = append(hunkBuf, line)
-			// Track new-file line advancement to update hunkNewEnd
-			if !strings.HasPrefix(line, "-") {
-				hunkNewEnd++
+		} else if hunkHeader != "" {
+			if strings.HasPrefix(line, "-") {
+				// Delete line: no new-file line number
+				hunkLines = append(hunkLines, hunkLine{text: line, newLine: 0, isDel: true})
+			} else {
+				// '+' line or ' ' context line: has new-file line number
+				hunkLines = append(hunkLines, hunkLine{text: line, newLine: newLine, isDel: false})
+				newLine++
 			}
 		}
 	}

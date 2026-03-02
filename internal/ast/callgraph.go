@@ -205,57 +205,9 @@ func (t *Tracer) traceFunc(pkgPath, funcName string, depth int) *CallNode {
 	return node
 }
 
-// resolveCallTarget resolves a CallExpr to its target package and function name.
+// resolveCallTarget delegates to the shared ResolveCallTarget function.
 func (t *Tracer) resolveCallTarget(pkg *packages.Package, call *ast.CallExpr) (pkgPath, funcName string) {
-	switch fn := call.Fun.(type) {
-	case *ast.Ident:
-		// Direct function call in same package
-		if obj, ok := pkg.TypesInfo.Uses[fn]; ok {
-			if f, ok := obj.(*types.Func); ok {
-				if f.Pkg() != nil {
-					return f.Pkg().Path(), f.Name()
-				}
-			}
-		}
-
-	case *ast.SelectorExpr:
-		// pkg.Func() or receiver.Method()
-		sel := pkg.TypesInfo.Selections[fn]
-		if sel != nil {
-			// Method call on a receiver
-			obj := sel.Obj()
-			if f, ok := obj.(*types.Func); ok {
-				sig := f.Type().(*types.Signature)
-				recv := sig.Recv()
-				if recv != nil {
-					recvType := recv.Type()
-					// Unwrap pointer
-					if ptr, ok := recvType.(*types.Pointer); ok {
-						recvType = ptr.Elem()
-					}
-					if named, ok := recvType.(*types.Named); ok {
-						if named.Obj().Pkg() != nil {
-							return named.Obj().Pkg().Path(), f.Name()
-						}
-					}
-				}
-				if f.Pkg() != nil {
-					return f.Pkg().Path(), f.Name()
-				}
-			}
-		}
-
-		// Qualified identifier (package.Function)
-		if ident, ok := fn.X.(*ast.Ident); ok {
-			if obj, exists := pkg.TypesInfo.Uses[ident]; exists {
-				if pkgName, ok := obj.(*types.PkgName); ok {
-					return pkgName.Imported().Path(), fn.Sel.Name
-				}
-			}
-		}
-	}
-
-	return "", ""
+	return ResolveCallTarget(pkg, call)
 }
 
 // resolveHandler resolves a handler reference like "orderHandler.CreateOrder"

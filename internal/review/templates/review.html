@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{.Title}}</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#header {
+  background: #2d2d2d;
+  padding: 8px 16px;
+  border-bottom: 1px solid #404040;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#header h1 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+#header .mode-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #0e639c;
+  color: white;
+}
+
+#header .header-desc {
+  font-size: 13px;
+  color: #999;
+  margin-left: 8px;
+  flex: 1;
+}
+
+.shortcuts-hint {
+  font-size: 11px;
+  color: #666;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Node description card */
+.node-desc {
+  padding: 10px 16px;
+  background: #2a2d3e;
+  border-left: 3px solid #0e639c;
+  margin: 8px 16px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #b8c4d4;
+}
+
+#app {
+  display: flex;
+  height: calc(100vh - 37px);
+}
+
+/* Left panel: tree */
+#tree-panel {
+  width: 300px;
+  min-width: 200px;
+  background: #252526;
+  border-right: 1px solid #404040;
+  overflow-y: auto;
+  padding: 8px 0;
+  flex-shrink: 0;
+}
+
+.tree-node {
+  cursor: pointer;
+  user-select: none;
+}
+
+.tree-label {
+  display: flex;
+  align-items: center;
+  padding: 3px 8px;
+  font-size: 13px;
+  white-space: nowrap;
+  color: #cccccc;
+}
+
+.tree-label:hover {
+  background: #2a2d2e;
+}
+
+.tree-label.active {
+  background: #094771;
+  color: #ffffff;
+}
+
+.tree-toggle {
+  width: 16px;
+  text-align: center;
+  font-size: 10px;
+  color: #888;
+  flex-shrink: 0;
+}
+
+.tree-icon {
+  width: 16px;
+  text-align: center;
+  margin-right: 4px;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.tree-icon.file { color: #519aba; }
+.tree-icon.func { color: #b180d7; }
+.tree-icon.method { color: #4ec9b0; }
+.tree-icon.rpc { color: #dcdcaa; }
+.tree-icon.mq { color: #ce9178; }
+
+.tree-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-pkg {
+  font-size: 11px;
+  color: #666;
+  margin-left: 6px;
+}
+
+.tree-children {
+  display: none;
+}
+
+.tree-children.open {
+  display: block;
+}
+
+/* Right panel: code */
+#code-panel {
+  flex: 1;
+  overflow: auto;
+  background: #1e1e1e;
+}
+
+#code-header {
+  position: sticky;
+  top: 0;
+  background: #2d2d2d;
+  padding: 6px 16px;
+  border-bottom: 1px solid #404040;
+  font-size: 12px;
+  color: #999;
+  z-index: 10;
+}
+
+#code-content {
+  padding: 0;
+}
+
+#code-content pre {
+  margin: 0;
+  padding: 12px 16px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  tab-size: 4;
+  overflow-x: auto;
+  background: #1e1e1e !important;
+}
+
+#code-content pre code.hljs {
+  background: transparent !important;
+}
+
+/* Diff coloring */
+.diff-line { display: block; padding: 0 8px; }
+.diff-add { background: rgba(35, 134, 54, 0.2); }
+.diff-del { background: rgba(218, 54, 51, 0.15); }
+.diff-hunk { color: #61afef; font-weight: bold; }
+.diff-header { color: #666; }
+.diff-prefix { user-select: none; }
+.diff-add .diff-prefix { color: #98c379; }
+.diff-del .diff-prefix { color: #e06c75; }
+
+/* Line numbers */
+.line-num {
+  display: inline-block;
+  width: 55px;
+  text-align: right;
+  padding-right: 16px;
+  margin-right: 20px;
+  color: #555;
+  user-select: none;
+  border-right: 1px solid #333;
+}
+
+/* Welcome */
+#welcome {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #555;
+  font-size: 14px;
+}
+
+/* Resize handle */
+#resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+}
+#resize-handle:hover { background: #007acc; }
+
+/* Code cross-navigation links */
+.code-link {
+  color: #4fc1ff;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+.code-link:hover {
+  color: #6fd8ff;
+  text-decoration-style: solid;
+}
+
+/* Navigation buttons */
+.nav-btn {
+  background: none;
+  border: 1px solid #555;
+  color: #999;
+  font-size: 14px;
+  padding: 1px 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  line-height: 1;
+}
+.nav-btn:hover:not(:disabled) {
+  background: #3c3c3c;
+  color: #e0e0e0;
+  border-color: #888;
+}
+.nav-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* Diff/Source toggle */
+.toggle-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.toggle-btn {
+  background: none;
+  border: 1px solid #555;
+  color: #888;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.toggle-btn:first-child { border-radius: 3px 0 0 3px; }
+.toggle-btn:last-child { border-radius: 0 3px 3px 0; border-left: none; }
+.toggle-btn.active {
+  background: #0e639c;
+  border-color: #0e639c;
+  color: #fff;
+}
+.toggle-btn:hover:not(.active):not(:disabled) {
+  background: #3c3c3c;
+  color: #e0e0e0;
+}
+.toggle-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* Diff line numbers */
+.diff-line-num {
+  display: inline-block;
+  width: 50px;
+  text-align: right;
+  padding-right: 12px;
+  margin-right: 12px;
+  color: #555;
+  user-select: none;
+  border-right: 1px solid #333;
+}
+
+/* Comment system */
+.line-num, .diff-line-num { cursor: pointer; }
+.line-num:hover, .diff-line-num:hover:not(.diff-del-line) {
+  color: #4fc1ff;
+  border-right-color: #4fc1ff;
+}
+.line-num.has-comment, .diff-line-num.has-comment {
+  color: #e8a427;
+  border-right-color: #e8a427;
+  position: relative;
+}
+.line-num.has-comment::after, .diff-line-num.has-comment::after {
+  content: '\1F4AC';
+  position: absolute;
+  right: -14px;
+  font-size: 9px;
+}
+.diff-del-line { cursor: default !important; }
+.diff-del-line:hover { color: #555 !important; border-right-color: #333 !important; }
+
+.source-line { display: block; }
+.comment-row {
+  display: block;
+  padding: 6px 8px 6px 90px;
+  background: #2a2d3e;
+  border-left: 3px solid #e8a427;
+}
+.comment-input-wrap {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+.comment-input {
+  flex: 1;
+  background: #1e1e2e;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #d4d4d4;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  resize: vertical;
+  min-height: 32px;
+  outline: none;
+}
+.comment-input:focus { border-color: #4fc1ff; }
+.comment-btn {
+  background: #0e639c;
+  border: none;
+  color: #fff;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.comment-btn:hover { background: #1177bb; }
+.comment-btn.del { background: #5a1d1d; }
+.comment-btn.del:hover { background: #7a2d2d; }
+.comment-btn.resolve { background: #2e6b3e; }
+.comment-btn.resolve:hover { background: #3a8a4e; }
+.stop-btn {
+  background: #5a1d1d;
+  border: none;
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.stop-btn:hover { background: #7a2d2d; }
+.comment-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #e8a427;
+  color: #1e1e1e;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <button class="nav-btn" id="nav-back" disabled title="Back (Alt+←)" onclick="navigateBack()">←</button>
+  <button class="nav-btn" id="nav-forward" disabled title="Forward (Alt+→)" onclick="navigateForward()">→</button>
+  <h1>{{.Title}}</h1>
+  <span class="mode-badge">{{.Mode}}</span>
+  {{if .Description}}<p class="header-desc">{{.Description}}</p>{{end}}
+  <div class="toggle-group" id="view-toggle">
+    <button class="toggle-btn" id="toggle-source" onclick="setViewMode('source')">Source</button>
+    <button class="toggle-btn" id="toggle-diff" onclick="setViewMode('diff')">Diff</button>
+  </div>
+  <span class="comment-badge" id="comment-count" style="display:none">0 comments</span>
+  <button class="comment-btn" id="export-comments-btn" style="display:none;font-size:11px;padding:2px 8px" onclick="exportComments()">Export</button>
+  {{if .ServeMode}}<button class="stop-btn" onclick="stopServer()">Stop Server</button>{{end}}
+  <span class="shortcuts-hint">Alt+← Back ｜ Alt+→ Forward ｜ Click <span style="color:#4fc1ff;text-decoration:underline dotted">underlined</span> to jump ｜ Click line number to comment</span>
+</div>
+
+<div id="app">
+  <div id="tree-panel"></div>
+  <div id="resize-handle"></div>
+  <div id="code-panel">
+    <div id="welcome">Click a node in the tree to view code</div>
+  </div>
+</div>
+
+<script>
+const flowData = {{.TreeJSON}};
+const mode = "{{.Mode}}";
+const serveMode = {{.ServeMode}};
+let viewMode = 'source'; // 'source' or 'diff'
+let currentNode = null;
+
+// Comment system: key = "file:line", value = comment text
+const comments = new Map();
+
+// Node index for cross-navigation: label -> {node, labelEl, toggleEl, childContainer}
+const nodeIndex = new Map();
+
+// Navigation history
+const navHistory = [];
+let navPos = -1;
+let navSkipPush = false; // flag to prevent push during back/forward
+
+function pushNavHistory(node) {
+  if (navSkipPush) return;
+  // Trim forward history when navigating from a back position
+  if (navPos < navHistory.length - 1) {
+    navHistory.splice(navPos + 1);
+  }
+  navHistory.push(node);
+  navPos = navHistory.length - 1;
+  updateNavButtons();
+}
+
+function navigateBack() {
+  if (navPos <= 0) return;
+  navPos--;
+  navSkipPush = true;
+  activateNode(navHistory[navPos]);
+  navSkipPush = false;
+  updateNavButtons();
+}
+
+function navigateForward() {
+  if (navPos >= navHistory.length - 1) return;
+  navPos++;
+  navSkipPush = true;
+  activateNode(navHistory[navPos]);
+  navSkipPush = false;
+  updateNavButtons();
+}
+
+function activateNode(node) {
+  // Find and highlight in tree
+  const entry = nodeIndex.get(node.label);
+  if (entry && entry.labelEl) {
+    // Expand ancestors
+    let el = entry.labelEl.parentElement;
+    while (el) {
+      if (el.classList && el.classList.contains('tree-children') && !el.classList.contains('open')) {
+        el.classList.add('open');
+        const parentLabel = el.previousElementSibling;
+        if (parentLabel) {
+          const t = parentLabel.querySelector('.tree-toggle');
+          if (t) t.textContent = '▼';
+        }
+      }
+      el = el.parentElement;
+    }
+    document.querySelectorAll('.tree-label.active').forEach(el => el.classList.remove('active'));
+    entry.labelEl.classList.add('active');
+    entry.labelEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  showCode(node);
+}
+
+function updateNavButtons() {
+  document.getElementById('nav-back').disabled = navPos <= 0;
+  document.getElementById('nav-forward').disabled = navPos >= navHistory.length - 1;
+}
+
+// Build node index recursively
+function buildNodeIndex(nodes) {
+  if (!nodes) return;
+  nodes.forEach(node => {
+    // Index any node that has code or description (worth navigating to)
+    if (node.code || node.description) {
+      nodeIndex.set(node.label, { node, labelEl: null, toggleEl: null, childContainer: null });
+    }
+    buildNodeIndex(node.children);
+  });
+}
+buildNodeIndex(flowData.roots || []);
+
+// Build tree UI
+function renderTree(roots, container) {
+  roots.forEach(node => {
+    const el = createTreeNode(node, 0);
+    container.appendChild(el);
+  });
+}
+
+function createTreeNode(node, depth) {
+  const div = document.createElement('div');
+  div.className = 'tree-node';
+
+  const label = document.createElement('div');
+  label.className = 'tree-label';
+  label.style.paddingLeft = (8 + depth * 16) + 'px';
+
+  const hasChildren = node.children && node.children.length > 0;
+
+  // Toggle arrow
+  const toggle = document.createElement('span');
+  toggle.className = 'tree-toggle';
+  toggle.textContent = hasChildren ? '▶' : ' ';
+  label.appendChild(toggle);
+
+  // Icon
+  const icon = document.createElement('span');
+  icon.className = 'tree-icon ' + nodeTypeClass(node.nodeType);
+  icon.textContent = nodeTypeIcon(node.nodeType);
+  label.appendChild(icon);
+
+  // Text
+  const text = document.createElement('span');
+  text.className = 'tree-text';
+  text.textContent = node.label;
+  label.appendChild(text);
+
+  // Package hint (for functions)
+  if (node.package && node.nodeType !== 'file') {
+    const pkg = document.createElement('span');
+    pkg.className = 'tree-pkg';
+    const parts = node.package.split('/');
+    pkg.textContent = parts[parts.length - 1];
+    label.appendChild(pkg);
+  }
+
+  div.appendChild(label);
+
+  // Children container
+  let childContainer = null;
+  if (hasChildren) {
+    childContainer = document.createElement('div');
+    childContainer.className = 'tree-children';
+    node.children.forEach(child => {
+      childContainer.appendChild(createTreeNode(child, depth + 1));
+    });
+    div.appendChild(childContainer);
+  }
+
+  // Store DOM refs in nodeIndex for cross-navigation
+  if (nodeIndex.has(node.label)) {
+    const entry = nodeIndex.get(node.label);
+    entry.labelEl = label;
+    entry.toggleEl = toggle;
+    entry.childContainer = childContainer;
+  }
+
+  // Click handler
+  label.addEventListener('click', (e) => {
+    e.stopPropagation();
+
+    // Toggle children
+    if (hasChildren && childContainer) {
+      const isOpen = childContainer.classList.toggle('open');
+      toggle.textContent = isOpen ? '▼' : '▶';
+    }
+
+    // Show code and track in history
+    pushNavHistory(node);
+    showCode(node);
+
+    // Highlight active
+    document.querySelectorAll('.tree-label.active').forEach(el => el.classList.remove('active'));
+    label.classList.add('active');
+  });
+
+  return div;
+}
+
+function nodeTypeIcon(type) {
+  switch(type) {
+    case 'file': return '📄';
+    case 'function': return 'ƒ';
+    case 'method': return 'M';
+    case 'external-rpc': return '⚡';
+    case 'mq-producer': return '📨';
+    default: return '•';
+  }
+}
+
+function nodeTypeClass(type) {
+  switch(type) {
+    case 'file': return 'file';
+    case 'function': return 'func';
+    case 'method': return 'method';
+    case 'external-rpc': return 'rpc';
+    case 'mq-producer': return 'mq';
+    default: return '';
+  }
+}
+
+// Toggle view mode (source/diff)
+function setViewMode(newMode) {
+  viewMode = newMode;
+  document.getElementById('toggle-source').classList.toggle('active', newMode === 'source');
+  document.getElementById('toggle-diff').classList.toggle('active', newMode === 'diff');
+  if (currentNode) showCode(currentNode);
+}
+
+function updateToggleState(node) {
+  const srcBtn = document.getElementById('toggle-source');
+  const diffBtn = document.getElementById('toggle-diff');
+
+  if (mode !== 'diff') {
+    // Codebase mode: toggle disabled
+    srcBtn.disabled = true;
+    diffBtn.disabled = true;
+    srcBtn.classList.add('active');
+    diffBtn.classList.remove('active');
+    return;
+  }
+
+  const hasDiff = !!(node && node.diff);
+  const hasCode = !!(node && node.code);
+
+  srcBtn.disabled = !hasCode;
+  diffBtn.disabled = !hasDiff;
+
+  // Determine effective view for this node WITHOUT changing user preference (viewMode)
+  let effectiveView = viewMode;
+  if (viewMode === 'diff' && !hasDiff && hasCode) {
+    effectiveView = 'source';
+  } else if (viewMode === 'source' && !hasCode && hasDiff) {
+    effectiveView = 'diff';
+  }
+
+  srcBtn.classList.toggle('active', effectiveView === 'source');
+  diffBtn.classList.toggle('active', effectiveView === 'diff');
+}
+
+// Determine effective view mode for a node (respects user preference, falls back if needed)
+function getEffectiveView(node) {
+  const hasDiff = !!(node && node.diff);
+  const hasCode = !!(node && node.code);
+  if (viewMode === 'diff' && !hasDiff && hasCode) return 'source';
+  if (viewMode === 'source' && !hasCode && hasDiff) return 'diff';
+  return viewMode;
+}
+
+// Show code in right panel
+function showCode(node) {
+  currentNode = node;
+  const panel = document.getElementById('code-panel');
+
+  updateToggleState(node);
+
+  const effectiveView = getEffectiveView(node);
+  const content = (effectiveView === 'diff' && node.diff) ? node.diff : node.code;
+
+  if (!content) {
+    if (node.description) {
+      panel.innerHTML = `
+        <div id="code-header">${escapeHTML(node.label)}</div>
+        <div class="node-desc">${escapeHTML(node.description)}</div>
+      `;
+    } else {
+      panel.innerHTML = '<div id="welcome">No code available for this node</div>';
+    }
+    return;
+  }
+
+  let headerText = node.file || node.label;
+  if (node.lineStart && node.lineEnd) {
+    headerText += `:${node.lineStart}-${node.lineEnd}`;
+  }
+  if (node.package) {
+    headerText = node.package + ' — ' + headerText;
+  }
+
+  const showingDiff = (effectiveView === 'diff' && node.diff);
+  let codeHTML;
+  if (showingDiff) {
+    codeHTML = renderDiff(content, node.file);
+  } else {
+    codeHTML = renderSource(content, node.lineStart || 1, node.file);
+  }
+
+  const descHTML = node.description
+    ? `<div class="node-desc">${escapeHTML(node.description)}</div>`
+    : '';
+
+  panel.innerHTML = `
+    <div id="code-header">${escapeHTML(headerText)}</div>
+    ${descHTML}
+    <div id="code-content">${codeHTML}</div>
+  `;
+
+  // Post-process: linkify function names that exist in nodeIndex
+  linkifyCode(panel.querySelector('#code-content'));
+
+  // Attach comment click handlers to line numbers
+  attachCommentHandlers(panel.querySelector('#code-content'), node);
+}
+
+// Navigate to a node by function name
+function navigateToNode(funcName) {
+  const entry = nodeIndex.get(funcName);
+  if (!entry || !entry.labelEl) return;
+
+  pushNavHistory(entry.node);
+  activateNode(entry.node);
+}
+
+// Post-process code DOM to linkify known function names
+function linkifyCode(container) {
+  if (!container || nodeIndex.size === 0) return;
+
+  // Build regex from all indexed function names (sorted longest first to avoid partial matches)
+  const names = Array.from(nodeIndex.keys()).sort((a, b) => b.length - a.length);
+  if (names.length === 0) return;
+  const pattern = new RegExp('\\b(' + names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\b', 'g');
+
+  // Walk text nodes inside the container
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+  textNodes.forEach(textNode => {
+    const text = textNode.textContent;
+    if (!pattern.test(text)) return;
+    pattern.lastIndex = 0; // reset regex state
+
+    // Skip text nodes inside .line-num spans
+    if (textNode.parentElement && textNode.parentElement.classList.contains('line-num')) return;
+
+    const frag = document.createDocumentFragment();
+    let lastIndex = 0;
+    let match;
+    pattern.lastIndex = 0;
+    while ((match = pattern.exec(text)) !== null) {
+      // Add text before match
+      if (match.index > lastIndex) {
+        frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+      }
+      // Add linked span
+      const span = document.createElement('span');
+      span.className = 'code-link';
+      const matchedName = match[1];
+      span.textContent = matchedName;
+      span.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        navigateToNode(matchedName);
+      });
+      frag.appendChild(span);
+      lastIndex = pattern.lastIndex;
+    }
+    if (lastIndex < text.length) {
+      frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+    }
+    textNode.parentNode.replaceChild(frag, textNode);
+  });
+}
+
+// Split highlight.js output by line, preserving span tags across line boundaries
+function splitHighlightedByLine(html) {
+  const rawLines = html.split('\n');
+  const result = [];
+  let openTags = [];
+
+  for (const rawLine of rawLines) {
+    const prefix = openTags.join('');
+    // Scan raw line for tag opens/closes to update stack
+    let newOpenTags = [...openTags];
+    const tagRe = /<(\/?)span([^>]*)>/g;
+    let m;
+    while ((m = tagRe.exec(rawLine)) !== null) {
+      if (m[1] === '/') newOpenTags.pop();
+      else newOpenTags.push('<span' + m[2] + '>');
+    }
+    const suffix = '</span>'.repeat(newOpenTags.length);
+    result.push(prefix + rawLine + suffix);
+    openTags = newOpenTags;
+  }
+  return result;
+}
+
+function renderDiff(code, file) {
+  const lines = code.split('\n');
+  const lang = detectLanguage(file);
+  let newLine = 0, oldLine = 0;
+
+  // Phase 1: classify each line
+  const parsed = [];
+  lines.forEach(line => {
+    if (line.startsWith('@@')) {
+      const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (m) { oldLine = parseInt(m[1]); newLine = parseInt(m[2]); }
+      parsed.push({ type: 'hunk', raw: line });
+    } else if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++') ||
+               line.startsWith('new file') || line.startsWith('old mode') || line.startsWith('new mode')) {
+      parsed.push({ type: 'header', raw: line });
+    } else if (line.startsWith('+')) {
+      parsed.push({ type: 'add', code: line.substring(1), prefix: '+', lineNum: newLine });
+      newLine++;
+    } else if (line.startsWith('-')) {
+      parsed.push({ type: 'del', code: line.substring(1), prefix: '-', lineNum: oldLine });
+      oldLine++;
+    } else {
+      const stripped = line.startsWith(' ') ? line.substring(1) : line;
+      parsed.push({ type: 'ctx', code: stripped, prefix: ' ', lineNum: newLine > 0 ? newLine : '' });
+      if (newLine > 0) { newLine++; oldLine++; }
+    }
+  });
+
+  // Phase 2: highlight code lines together
+  const codeLines = [];
+  parsed.forEach(p => { if (p.code !== undefined) codeLines.push(p.code); });
+
+  let highlightedLines = codeLines.map(l => escapeHTML(l));
+  try {
+    const result = hljs.highlight(codeLines.join('\n'), { language: lang });
+    highlightedLines = splitHighlightedByLine(result.value);
+  } catch(e) {}
+
+  // Phase 3: assemble HTML
+  let html = '<pre>';
+  let codeIdx = 0;
+  parsed.forEach(p => {
+    let cls = 'diff-line';
+    let lineNum = '';
+    let content;
+
+    if (p.type === 'hunk') {
+      cls += ' diff-hunk';
+      content = escapeHTML(p.raw);
+    } else if (p.type === 'header') {
+      cls += ' diff-header';
+      content = escapeHTML(p.raw);
+    } else {
+      if (p.type === 'add') cls += ' diff-add';
+      else if (p.type === 'del') cls += ' diff-del';
+      if (p.lineNum) lineNum = '<span class="diff-line-num">' + p.lineNum + '</span>';
+      content = '<span class="diff-prefix">' + escapeHTML(p.prefix) + '</span>' + highlightedLines[codeIdx];
+      codeIdx++;
+    }
+    html += '<span class="' + cls + '">' + lineNum + content + '\n</span>';
+  });
+  html += '</pre>';
+  return html;
+}
+
+function detectLanguage(file) {
+  if (!file) return 'go';
+  const ext = file.split('.').pop().toLowerCase();
+  const map = {
+    go: 'go', js: 'javascript', ts: 'typescript', jsx: 'javascript', tsx: 'typescript',
+    py: 'python', rb: 'ruby', rs: 'rust', java: 'java', kt: 'kotlin', swift: 'swift',
+    c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp', cs: 'csharp', php: 'php',
+    html: 'html', htm: 'html', xml: 'xml', css: 'css', scss: 'scss', less: 'less',
+    json: 'json', yaml: 'yaml', yml: 'yaml', toml: 'ini', ini: 'ini',
+    md: 'markdown', sh: 'bash', bash: 'bash', zsh: 'bash',
+    sql: 'sql', r: 'r', lua: 'lua', pl: 'perl', makefile: 'makefile',
+    thrift: 'thrift', proto: 'protobuf',
+  };
+  return map[ext] || 'plaintext';
+}
+
+function renderSource(code, startLine, file) {
+  const lang = detectLanguage(file);
+  const lines = code.split('\n');
+
+  // Highlight first, then inject line numbers (avoids hljs destroying line-num spans)
+  let highlightedLines = lines.map(l => escapeHTML(l));
+  try {
+    const result = hljs.highlight(code, { language: lang });
+    highlightedLines = splitHighlightedByLine(result.value);
+  } catch(e) {}
+
+  let numbered = '';
+  highlightedLines.forEach((line, i) => {
+    const num = startLine + i;
+    numbered += '<span class="source-line"><span class="line-num">' + num + '</span>' + line + '\n</span>';
+  });
+  return '<pre>' + numbered + '</pre>';
+}
+
+function escapeHTML(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Comment system ──
+
+function commentKey(file, line) { return file + ':' + line; }
+
+function updateCommentCount() {
+  const badge = document.getElementById('comment-count');
+  const exportBtn = document.getElementById('export-comments-btn');
+  const n = comments.size;
+  if (n > 0) {
+    badge.textContent = n + (n === 1 ? ' comment' : ' comments');
+    badge.style.display = '';
+    if (!serveMode) exportBtn.style.display = '';
+  } else {
+    badge.style.display = 'none';
+    exportBtn.style.display = 'none';
+  }
+}
+
+function saveComments() {
+  if (!serveMode) return;
+  const data = buildCommentsJSON();
+  fetch('/comments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }).catch(e => console.warn('Auto-save failed:', e));
+}
+
+function buildCommentsJSON() {
+  const arr = [];
+  comments.forEach((text, key) => {
+    const [file, lineStr] = [key.substring(0, key.lastIndexOf(':')), key.substring(key.lastIndexOf(':') + 1)];
+    arr.push({ file, line: parseInt(lineStr), codeContext: getCodeContext(file, parseInt(lineStr)), comment: text });
+  });
+  arr.sort((a, b) => a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line);
+  return {
+    reviewTitle: flowData.title || '',
+    mode: mode,
+    exportedAt: new Date().toISOString(),
+    comments: arr
+  };
+}
+
+function getCodeContext(file, line) {
+  // Try to find the code line from current node or any node
+  function searchNode(node) {
+    if (node.file && node.file.endsWith(file) && node.code && node.lineStart) {
+      const offset = line - node.lineStart;
+      const lines = node.code.split('\n');
+      if (offset >= 0 && offset < lines.length) return lines[offset].trim();
+    }
+    for (const ch of (node.children || [])) {
+      const r = searchNode(ch);
+      if (r) return r;
+    }
+    return '';
+  }
+  for (const root of (flowData.roots || [])) {
+    const r = searchNode(root);
+    if (r) return r;
+  }
+  return '';
+}
+
+function exportComments() {
+  const data = buildCommentsJSON();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'review-comments.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function stopServer() {
+  if (!confirm('Stop the review server?')) return;
+  fetch('/shutdown', { method: 'POST' })
+    .then(() => { document.title = '(stopped) ' + document.title; })
+    .catch(() => {});
+}
+
+function resolveComment(btn) {
+  const row = btn.closest('.comment-row');
+  const key = row.dataset.key;
+  comments.delete(key);
+  row.remove();
+  updateCommentIndicators();
+  updateCommentCount();
+  saveComments();
+}
+
+function addCommentUI(lineEl, file, line, isDel) {
+  if (isDel) return; // deleted lines not commentable
+  const key = commentKey(file, line);
+  // Check if comment row already exists (toggle off)
+  const existing = lineEl.closest('span.diff-line, pre')?.querySelector('.comment-row[data-key="' + key + '"]');
+  if (existing) { existing.remove(); return; }
+  // Also check next sibling
+  const nextEl = lineEl.parentElement?.nextElementSibling;
+  if (nextEl && nextEl.classList.contains('comment-row') && nextEl.dataset.key === key) {
+    nextEl.remove(); return;
+  }
+
+  const row = document.createElement('span');
+  row.className = 'comment-row';
+  row.dataset.key = key;
+
+  const existingComment = comments.get(key) || '';
+  row.innerHTML = '<div class="comment-input-wrap">' +
+    '<textarea class="comment-input" placeholder="Add comment for ' + escapeHTML(file) + ':' + line + '..." rows="2">' + escapeHTML(existingComment) + '</textarea>' +
+    '<button class="comment-btn" onclick="submitComment(this)">Save</button>' +
+    (existingComment ? '<button class="comment-btn resolve" onclick="resolveComment(this)">Resolve</button>' : '') +
+    (existingComment ? '<button class="comment-btn del" onclick="deleteComment(this)">Delete</button>' : '') +
+    '</div>';
+
+  // Insert after the current line span
+  const parentSpan = lineEl.closest('span.diff-line, span.source-line');
+  if (parentSpan) {
+    parentSpan.insertAdjacentElement('afterend', row);
+  } else {
+    const codeContent = document.getElementById('code-content');
+    if (codeContent) codeContent.appendChild(row);
+  }
+  // Focus the textarea
+  const ta = row.querySelector('.comment-input');
+  if (ta) {
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+}
+
+function submitComment(btn) {
+  const row = btn.closest('.comment-row');
+  const key = row.dataset.key;
+  const text = row.querySelector('.comment-input').value.trim();
+  if (!text) { deleteComment(btn); return; }
+  comments.set(key, text);
+  row.remove();
+  updateCommentIndicators();
+  updateCommentCount();
+  saveComments();
+}
+
+function deleteComment(btn) {
+  const row = btn.closest('.comment-row');
+  const key = row.dataset.key;
+  comments.delete(key);
+  row.remove();
+  updateCommentIndicators();
+  updateCommentCount();
+  saveComments();
+}
+
+function updateCommentIndicators() {
+  // Update all visible line-num spans
+  document.querySelectorAll('.line-num, .diff-line-num').forEach(el => {
+    const file = el.dataset.file;
+    const line = el.dataset.line;
+    if (!file || !line) return;
+    const key = commentKey(file, parseInt(line));
+    el.classList.toggle('has-comment', comments.has(key));
+  });
+}
+
+function attachCommentHandlers(container, node) {
+  if (!container) return;
+  container.querySelectorAll('.line-num').forEach(el => {
+    const line = parseInt(el.textContent);
+    if (!line || !node.file) return;
+    el.dataset.file = node.file;
+    el.dataset.line = line;
+    el.classList.toggle('has-comment', comments.has(commentKey(node.file, line)));
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      addCommentUI(el, node.file, line, false);
+    });
+  });
+  container.querySelectorAll('.diff-line-num').forEach(el => {
+    const line = parseInt(el.textContent);
+    if (!line || !node.file) return;
+    const isDel = el.closest('.diff-del') !== null;
+    el.dataset.file = node.file;
+    el.dataset.line = line;
+    if (isDel) {
+      el.classList.add('diff-del-line');
+    } else {
+      el.classList.toggle('has-comment', comments.has(commentKey(node.file, line)));
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        addCommentUI(el, node.file, line, false);
+      });
+    }
+  });
+}
+
+// ── Resize handle
+const handle = document.getElementById('resize-handle');
+const treePanel = document.getElementById('tree-panel');
+let isResizing = false;
+
+handle.addEventListener('mousedown', (e) => {
+  isResizing = true;
+  document.body.style.cursor = 'col-resize';
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!isResizing) return;
+  const width = Math.max(150, Math.min(600, e.clientX));
+  treePanel.style.width = width + 'px';
+});
+
+document.addEventListener('mouseup', () => {
+  isResizing = false;
+  document.body.style.cursor = '';
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); navigateBack(); }
+  if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); navigateForward(); }
+});
+
+// Init toggle state
+if (mode === 'diff') {
+  viewMode = 'diff';
+  document.getElementById('toggle-diff').classList.add('active');
+} else {
+  viewMode = 'source';
+  document.getElementById('toggle-source').classList.add('active');
+  document.getElementById('toggle-source').disabled = true;
+  document.getElementById('toggle-diff').disabled = true;
+}
+
+renderTree(flowData.roots || [], document.getElementById('tree-panel'));
+
+// Auto-open first root and show its code
+const firstLabel = document.querySelector('.tree-label');
+if (firstLabel) firstLabel.click();
+</script>
+</body>
+</html>

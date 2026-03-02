@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -13,19 +14,29 @@ import (
 //go:embed all:embed_data
 var embeddedFiles embed.FS
 
+var initTarget string
+
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Install gsf skills and commands into the project",
-	Long: `Installs gsf skill and command files for OpenSpec integration.
-Detects whether the project uses .claude/ or .coco/ and installs accordingly.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		targetDir := detectTargetDir()
-		fmt.Printf("Installing gsf skills to %s/\n", targetDir)
+	Long: `Installs gsf command files for Claude Code or Coco integration.
+Detects whether the project uses .claude/ or .coco/ and installs accordingly.
+Use --target to override detection (e.g. --target coco, --target claude).
 
-		// Install skills
-		skillsDir := filepath.Join(targetDir, "skills")
-		if err := os.MkdirAll(skillsDir, 0o755); err != nil {
-			return fmt.Errorf("creating skills directory: %w", err)
+Files are installed to <target>/commands/gsf/ so they become /gsf:<name> commands.
+For example, gsf-review.md becomes /gsf:review.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		targetDir := initTarget
+		if targetDir == "" {
+			targetDir = detectTargetDir()
+		} else {
+			targetDir = "." + targetDir // "coco" → ".coco"
+		}
+		commandsDir := filepath.Join(targetDir, "commands", "gsf")
+		fmt.Printf("Installing gsf commands to %s/\n", commandsDir)
+
+		if err := os.MkdirAll(commandsDir, 0o755); err != nil {
+			return fmt.Errorf("creating commands directory: %w", err)
 		}
 
 		entries, err := fs.ReadDir(embeddedFiles, "embed_data/skills")
@@ -41,14 +52,17 @@ Detects whether the project uses .claude/ or .coco/ and installs accordingly.`,
 			if err != nil {
 				return fmt.Errorf("reading %s: %w", entry.Name(), err)
 			}
-			dest := filepath.Join(skillsDir, entry.Name())
+			// Strip "gsf-" prefix: "gsf-review.md" → "review.md"
+			destName := strings.TrimPrefix(entry.Name(), "gsf-")
+			dest := filepath.Join(commandsDir, destName)
 			if err := os.WriteFile(dest, data, 0o644); err != nil {
 				return fmt.Errorf("writing %s: %w", dest, err)
 			}
-			fmt.Printf("  installed %s\n", dest)
+			cmdName := strings.TrimSuffix(destName, ".md")
+			fmt.Printf("  /gsf:%s → %s\n", cmdName, dest)
 		}
 
-		fmt.Println("Done. gsf skills are ready for OpenSpec.")
+		fmt.Println("Done. Run /gsf:<command> to use.")
 		return nil
 	},
 }
@@ -65,5 +79,6 @@ func detectTargetDir() string {
 }
 
 func init() {
+	initCmd.Flags().StringVar(&initTarget, "target", "", "target tool directory: claude or coco (default: auto-detect)")
 	rootCmd.AddCommand(initCmd)
 }

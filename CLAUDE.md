@@ -81,20 +81,26 @@ service-registry/
 - L2→L3 高度自动化
 - 每个 Task Spec 针对弱模型优化：明确、短、有示例、有约束
 
-### Module 4: Flow-Based Review (流式代码审查)
+### Module 4: Flow-Based Review (AI 驱动的流式代码审查)
 
 **解决痛点**: 传统 file-based diff 不符合人类 review 习惯
 
-**核心理念**: 人类 review 的真实习惯是：找到入口 → 跟着请求流走 → 在每个节点检查逻辑 → 验证是否符合预期
+**核心理念**: 人类 review 的真实习惯是：找到入口 → 跟着动线走 → 在每个节点检查逻辑 → 验证是否符合预期。"动线"不是固定结构，而是根据变更性质动态决定的。
 
-**核心能力**:
-- 解析 git diff，映射到函数/方法级别
-- 利用 Investigate 的调用链数据，把 diff 节点挂到调用树上
-- 从 Hertz handler 入口开始，按调用顺序组织变更展示
-- 每个节点标注：变更类型（modified/new/unchanged/external）、Spec 对应关系、风险提示
-- 外部 RPC 节点展示 Service Registry 中的接口信息
-- Spec 覆盖度检测：哪些验收标准已实现，哪些遗漏
-- 输出：CLI 树状渲染（第一版），未来可扩展 Web UI
+**架构原则**: gsf 做精确的脏活（AI 做不好的），AI 做智能的组织（gsf 做不好的）。
+
+**gsf 提供的工具能力**（精确、无幻觉）:
+- `gsf diff`: 解析 git diff，映射到函数/方法级别，附带完整代码片段
+- `gsf trace`: 从任意函数向下追踪调用链
+- `gsf callers`: 查找任意函数的直接调用者（一层）
+
+**AI 负责的智能决策**（通过 `/gsf:review` skill 编排）:
+- 判断变更性质和意图（新 feature / bugfix / 重构）
+- 决定 review 动线（请求流 / 命令流 / 影响面 / 数据流）
+- 按需调用 gsf 工具补充上下游上下文
+- 组织成人类友好的 review 文档
+
+**适用于任何类型的代码库**，不仅限于 Hertz 项目。
 
 ## P2 Modules (Future)
 
@@ -103,7 +109,7 @@ service-registry/
 
 ## Development Flow (Using OpenSpec)
 
-本项目自身使用 OpenSpec 管理开发流程：
+**所有需求必须走 OpenSpec 流程**，不允许跳过直接写代码：
 1. `/opsx:explore` — 探索和讨论
 2. `/opsx:propose` — 提出变更，生成 proposal + design + tasks
 3. `/opsx:apply` — 按 tasks 实施
@@ -111,34 +117,30 @@ service-registry/
 
 ## Schedule
 
-### Phase 1: 框架开发（AI 主力编码，尽快交付）
+### Phase 1: 框架开发 ✅ 已完成
 
-按模块交付，每个模块完成即可 review：
+所有 6 个 Milestone 已交付：
+- M1: 项目脚手架 + Go AST 基础能力
+- M2: Service Registry (Thrift IDL parser)
+- M3: Investigate 模块
+- M4: OpenSpec 整合
+- M5: Flow-Based Review (v1, 硬编码 Hertz)
+- M6: E2E 集成测试 + 自举验证
 
-```
-Milestone 1: 项目脚手架 + Go AST 基础能力 (Hertz 路由解析、Kitex client 识别、调用链追踪)
-Milestone 2: Service Registry (Thrift IDL parser、auto.yaml 生成)
-Milestone 3: Investigate 模块 (调研报告输出)
-Milestone 4: OpenSpec 整合 (spec 模板体系 L1/L2/L3)
-Milestone 5: Flow-Based Review (git diff → AST 映射 → 调用链叠加 → CLI 渲染)
-Milestone 6: 端到端串联跑通
-```
+### Phase 2: 实战验证 + 迭代（当前阶段）
 
-人的主要工作：review spec/design、提供真实 Hertz/Kitex 项目代码做验证、决策设计方向。
+用自身项目做自举验证，发现问题并迭代：
+- **Flow Review 改造**: M5 的硬编码方案在自举中暴露局限，正在改造为 AI 驱动方案
+- 用真实需求跑完整流程，收集效率数据
+- 整理文档 + 团队使用规范 + 汇报材料
 
 ### Self-Bootstrapping Strategy (自举)
 
-模块开发顺序已针对自举优化。核心模块完成后，立刻用于加速后续开发：
-- **OpenSpec**: 从 M1 起全程使用，每个 milestone 走 propose → apply → archive
-- **Investigate**: M3 完成后，用于调研自身 Go 代码，辅助开发 M4、M5
-- **Flow-Based Review**: M5 完成后，用于 review 后续所有变更
+核心模块完成后，立刻用于加速后续开发：
+- **OpenSpec**: 全程使用，每个变更走 explore → propose → apply → archive
+- **Investigate**: 用于调研自身 Go 代码
+- **Flow-Based Review**: 用 `/gsf:review` review 自身代码变更
 - 自举本身就是最好的 demo："我们用这个框架开发了这个框架"
-
-### Phase 2: 实战验证 + 出成果
-```
-用真实需求跑完整流程，收集效率数据和 demo 截图
-整理文档 + 团队使用规范 + 汇报材料
-```
 
 ## Presentation Narrative
 
@@ -152,5 +154,5 @@ Milestone 6: 端到端串联跑通
 | Codebase awareness | Weak (manual) | N/A | **Go AST analysis + auto context extraction** |
 | Weak model support | No | No | **Standardized prompt engineering for weak models** |
 | Team standardization | Generic templates | N/A | **Go/Hertz/Kitex-specific templates + workflow norms** |
-| Review/Test | N/A | N/A | **Flow-based review + spec traceability + test scaffolding** |
+| Review/Test | N/A | N/A | **AI-driven flow review (gsf tools + AI orchestration) + test scaffolding** |
 | Cross-service RPC | N/A | N/A | **Service Registry from centralized Thrift IDL** |
